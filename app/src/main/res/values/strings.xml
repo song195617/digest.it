@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">digest.it</string>
+    <string name="processing_notification_channel">Content Processing</string>
+    <string name="processing_notification_title">Processing content…</string>
+    <string name="notification_channel_id">digestit_processing</string>
+</resources>
