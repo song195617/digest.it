@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     claude_api_key: str = ""
     audio_tmp_dir: str = "/tmp/digestit_audio"
-    max_audio_chunk_minutes: int = 10  # Split audio into 10-min chunks for Whisper
+    whisper_model: str = "large-v3"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
     debug: bool = False
 
     class Config:
