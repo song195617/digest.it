@@ -42,7 +42,6 @@ class ChatRepository @Inject constructor(
         userMessage: String
     ): Flow<ChatMessage> = flow {
         val baseUrl = prefs.backendUrl.first()
-        val claudeKey = prefs.claudeApiKey.first()
         val resolvedSessionId = sessionId ?: chatDao.getSessionId(episodeId)
 
         // Save user message to local DB
@@ -56,11 +55,10 @@ class ChatRepository @Inject constructor(
         chatDao.insertMessage(ChatMessageEntity.fromDomain(userMsg, episodeId))
         emit(userMsg)
 
-        // Stream assistant response via WebSocket
+        // Stream assistant response via WebSocket (AI headers added by OkHttp interceptor)
         var lastAssistantMsg: ChatMessage? = null
         webSocketManager.streamChatResponse(
             baseUrl = baseUrl,
-            apiKey = claudeKey,
             episodeId = episodeId,
             sessionId = resolvedSessionId,
             userMessage = userMessage

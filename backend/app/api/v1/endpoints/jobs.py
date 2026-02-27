@@ -1,11 +1,13 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.episode import Episode, ProcessingJob, ProcessingStatus, Platform
 from app.services.url_parser import detect_platform
+from app.services.ai.provider_config import ProviderConfig
 from app.tasks.extract_task import extract_task
+from app.config import settings
 
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
 
@@ -24,10 +26,25 @@ class JobStatusResponse(BaseModel):
 
 
 @router.post("", response_model=JobStatusResponse)
-async def submit_url(request: SubmitUrlRequest, db: Session = Depends(get_db)):
+async def submit_url(
+    request: SubmitUrlRequest,
+    db: Session = Depends(get_db),
+    x_ai_provider: str | None = Header(default=None, alias="X-AI-Provider"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_ai_model: str | None = Header(default=None, alias="X-AI-Model"),
+    x_ai_base_url: str | None = Header(default=None, alias="X-AI-Base-URL"),
+):
     parsed = detect_platform(request.url)
     if parsed.platform == Platform.UNKNOWN:
         raise HTTPException(status_code=422, detail="Unsupported platform. Only Bilibili and Xiaoyuzhou are supported.")
+
+    provider_config = ProviderConfig.from_headers(
+        provider=x_ai_provider,
+        api_key=x_api_key,
+        model=x_ai_model,
+        base_url=x_ai_base_url,
+        fallback_claude_key=settings.claude_api_key,
+    )
 
     episode_id = str(uuid.uuid4())
     job_id = str(uuid.uuid4())
@@ -50,8 +67,8 @@ async def submit_url(request: SubmitUrlRequest, db: Session = Depends(get_db)):
     db.add(job)
     db.commit()
 
-    # Kick off Celery pipeline
-    extract_task.delay(job_id, episode_id, parsed.normalized_url)
+    # Kick off Celery pipeline with provider config
+    extract_task.delay(job_id, episode_id, parsed.normalized_url, provider_config.to_dict())
 
     return JobStatusResponse(
         job_id=job_id,

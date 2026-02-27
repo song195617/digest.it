@@ -1,16 +1,18 @@
 """
-Celery task: generate AI summary using Claude API.
+Celery task: generate AI summary using the configured AI provider.
 """
 import asyncio
 import json
 from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
 from app.models.episode import Episode, ProcessingJob, ProcessingStatus, Summary, Transcript
-from app.services.ai.claude_service import generate_summary
+from app.services.ai.factory import get_ai_service
+from app.services.ai.provider_config import ProviderConfig, PROVIDER_CLAUDE, CLAUDE_DEFAULT_MODEL
+from app.config import settings
 
 
 @celery_app.task(bind=True, name="tasks.summarize")
-def summarize_task(self, job_id: str, episode_id: str):
+def summarize_task(self, job_id: str, episode_id: str, provider_config_dict: dict = None):
     """Generate structured AI summary for the episode transcript."""
     db = SessionLocal()
     try:
@@ -28,8 +30,19 @@ def summarize_task(self, job_id: str, episode_id: str):
             job.current_step = "正在生成 AI 摘要…"
         db.commit()
 
+        if provider_config_dict:
+            config = ProviderConfig.from_dict(provider_config_dict)
+        else:
+            config = ProviderConfig(
+                provider=PROVIDER_CLAUDE,
+                api_key=settings.claude_api_key,
+                model=CLAUDE_DEFAULT_MODEL,
+                base_url=None,
+            )
+
+        service = get_ai_service(config)
         summary_data = asyncio.run(
-            generate_summary(
+            service.generate_summary(
                 title=episode.title if episode else "",
                 author=episode.author if episode else "",
                 full_text=transcript.full_text,

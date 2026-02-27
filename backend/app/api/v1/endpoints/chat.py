@@ -3,11 +3,13 @@ Chat endpoint: WebSocket for streaming AI responses.
 """
 import json
 import uuid
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Header
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.episode import Episode, Transcript, Summary, ChatMessage
-from app.services.ai.claude_service import stream_chat
+from app.services.ai.factory import get_ai_service
+from app.services.ai.provider_config import ProviderConfig
+from app.config import settings
 
 router = APIRouter(prefix="/v1/ws", tags=["chat"])
 
@@ -17,8 +19,21 @@ async def chat_websocket(
     websocket: WebSocket,
     session_id: str,
     db: Session = Depends(get_db),
+    x_ai_provider: str | None = Header(default=None, alias="X-AI-Provider"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_ai_model: str | None = Header(default=None, alias="X-AI-Model"),
+    x_ai_base_url: str | None = Header(default=None, alias="X-AI-Base-URL"),
 ):
     await websocket.accept()
+
+    provider_config = ProviderConfig.from_headers(
+        provider=x_ai_provider,
+        api_key=x_api_key,
+        model=x_ai_model,
+        base_url=x_ai_base_url,
+        fallback_claude_key=settings.claude_api_key,
+    )
+    ai_service = get_ai_service(provider_config)
 
     try:
         while True:
@@ -63,7 +78,7 @@ async def chat_websocket(
             segments = json.loads(transcript.segments_json) if transcript.segments_json else []
             full_response = ""
 
-            async for delta in stream_chat(
+            async for delta in ai_service.stream_chat(
                 title=episode.title,
                 author=episode.author,
                 full_text=transcript.full_text,

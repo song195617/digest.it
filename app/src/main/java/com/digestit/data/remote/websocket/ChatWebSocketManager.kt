@@ -24,7 +24,6 @@ class ChatWebSocketManager @Inject constructor(
 ) {
     fun streamChatResponse(
         baseUrl: String,
-        apiKey: String,
         episodeId: String,
         sessionId: String?,
         userMessage: String
@@ -34,9 +33,9 @@ class ChatWebSocketManager @Inject constructor(
             .replace("http://", "ws://")
             .trimEnd('/') + "/v1/ws/chat/${sessionId ?: "new"}"
 
+        // AI provider headers are added by the OkHttp interceptor in NetworkModule
         val request = Request.Builder()
             .url(wsUrl)
-            .addHeader("X-API-Key", apiKey)
             .build()
 
         var accumulatedContent = ""

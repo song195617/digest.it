@@ -13,7 +13,7 @@ from app.config import settings
 
 
 @celery_app.task(bind=True, name="tasks.extract")
-def extract_task(self, job_id: str, episode_id: str, url: str):
+def extract_task(self, job_id: str, episode_id: str, url: str, provider_config_dict: dict = None):
     """Extract audio or subtitle from Bilibili/Xiaoyuzhou URL."""
     db = SessionLocal()
     try:
@@ -51,7 +51,7 @@ def extract_task(self, job_id: str, episode_id: str, url: str):
                 db.commit()
                 # Skip to summarize task
                 from app.tasks.summarize_task import summarize_task
-                summarize_task.delay(job_id, episode_id)
+                summarize_task.delay(job_id, episode_id, provider_config_dict)
                 return
             else:
                 episode.audio_file_path = result.audio_local_path
@@ -69,7 +69,7 @@ def extract_task(self, job_id: str, episode_id: str, url: str):
         db.commit()
 
         from app.tasks.transcribe_task import transcribe_task
-        transcribe_task.delay(job_id, episode_id)
+        transcribe_task.delay(job_id, episode_id, provider_config_dict)
 
     except Exception as e:
         db.rollback()

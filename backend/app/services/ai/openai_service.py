@@ -1,19 +1,23 @@
 """
-Claude API integration for summary generation and streaming chat.
+OpenAI-compatible AI service for summary generation and streaming chat.
+Supports Gemini (via OpenAI-compat endpoint) and any OpenAI-compatible provider.
 """
 import json
 import re
 from typing import AsyncGenerator
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from app.services.ai.base import AIService
 from app.services.ai.provider_config import ProviderConfig
 from app.services.ai._utils import truncate_transcript, format_transcript_with_timestamps
 from app.services.ai.prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_TEMPLATE, CHAT_SYSTEM_TEMPLATE
 
 
-class ClaudeService(AIService):
+class OpenAICompatibleService(AIService):
     def __init__(self, config: ProviderConfig):
-        self._client = AsyncAnthropic(api_key=config.api_key)
+        self._client = AsyncOpenAI(
+            api_key=config.api_key,
+            base_url=config.base_url,
+        )
         self._model = config.model
 
     async def generate_summary(
@@ -30,14 +34,16 @@ class ClaudeService(AIService):
             transcript=transcript,
         )
 
-        message = await self._client.messages.create(
+        response = await self._client.chat.completions.create(
             model=self._model,
             max_tokens=4096,
-            system=SUMMARY_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=[
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
         )
 
-        content = message.content[0].text
+        content = response.choices[0].message.content
         json_match = re.search(r"\{.*\}", content, re.DOTALL)
         if json_match:
             return json.loads(json_match.group())
@@ -53,54 +59,27 @@ class ClaudeService(AIService):
         user_message: str,
     ) -> AsyncGenerator[str, None]:
         transcript_with_ts = format_transcript_with_timestamps(segments)
-        truncated_transcript = truncate_transcript(transcript_with_ts)
+        truncated = truncate_transcript(transcript_with_ts)
 
         system_prompt = CHAT_SYSTEM_TEMPLATE.format(
             title=title,
             author=author,
-            transcript_with_timestamps=truncated_transcript,
+            transcript_with_timestamps=truncated,
         )
 
-        messages = []
+        messages = [{"role": "system", "content": system_prompt}]
         for msg in chat_history[-20:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": user_message})
 
-        async with self._client.messages.stream(
+        stream = await self._client.chat.completions.create(
             model=self._model,
             max_tokens=2048,
-            system=system_prompt,
             messages=messages,
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+            stream=True,
+        )
 
-
-# Backwards-compat shims for any code not yet migrated to the factory pattern
-from app.config import settings
-from app.services.ai.provider_config import PROVIDER_CLAUDE, CLAUDE_DEFAULT_MODEL
-
-
-async def generate_summary(
-    title: str,
-    author: str,
-    full_text: str,
-    segments: list[dict],
-) -> dict:
-    cfg = ProviderConfig(PROVIDER_CLAUDE, settings.claude_api_key, CLAUDE_DEFAULT_MODEL, None)
-    return await ClaudeService(cfg).generate_summary(title, author, full_text, segments)
-
-
-async def stream_chat(
-    title: str,
-    author: str,
-    full_text: str,
-    segments: list[dict],
-    chat_history: list[dict],
-    user_message: str,
-) -> AsyncGenerator[str, None]:
-    cfg = ProviderConfig(PROVIDER_CLAUDE, settings.claude_api_key, CLAUDE_DEFAULT_MODEL, None)
-    async for delta in ClaudeService(cfg).stream_chat(
-        title, author, full_text, segments, chat_history, user_message
-    ):
-        yield delta
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
