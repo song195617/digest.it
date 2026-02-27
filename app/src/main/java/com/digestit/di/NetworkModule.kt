@@ -30,11 +30,22 @@ object NetworkModule {
     fun provideOkHttpClient(prefs: UserPreferencesDataStore): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor { chain ->
-                val apiKey = runBlocking { prefs.claudeApiKey.first() }
-                val request = chain.request().newBuilder()
-                    .addHeader("X-API-Key", apiKey)
-                    .build()
-                chain.proceed(request)
+                val provider = runBlocking { prefs.aiProvider.first() }
+                val aiApiKey = when (provider) {
+                    "gemini" -> runBlocking { prefs.geminiApiKey.first() }
+                    "openai_compatible" -> runBlocking { prefs.customAiApiKey.first() }
+                    else -> runBlocking { prefs.claudeApiKey.first() }
+                }
+                val requestBuilder = chain.request().newBuilder()
+                    .addHeader("X-API-Key", aiApiKey)
+                    .addHeader("X-AI-Provider", provider)
+                if (provider == "openai_compatible") {
+                    val model = runBlocking { prefs.customAiModel.first() }
+                    val baseUrl = runBlocking { prefs.customAiBaseUrl.first() }
+                    if (model.isNotBlank()) requestBuilder.addHeader("X-AI-Model", model)
+                    if (baseUrl.isNotBlank()) requestBuilder.addHeader("X-AI-Base-URL", baseUrl)
+                }
+                chain.proceed(requestBuilder.build())
             }
             .addInterceptor(
                 HttpLoggingInterceptor().apply {

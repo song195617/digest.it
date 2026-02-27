@@ -12,7 +12,7 @@ from app.config import settings
 
 
 @celery_app.task(bind=True, name="tasks.transcribe")
-def transcribe_task(self, job_id: str, episode_id: str):
+def transcribe_task(self, job_id: str, episode_id: str, provider_config_dict: dict = None):
     """Transcribe audio using Whisper API with chunking for long files."""
     db = SessionLocal()
     try:
@@ -68,7 +68,7 @@ def transcribe_task(self, job_id: str, episode_id: str):
 
         # Chain to summarize task
         from app.tasks.summarize_task import summarize_task
-        summarize_task.delay(job_id, episode_id)
+        summarize_task.delay(job_id, episode_id, provider_config_dict)
 
     except Exception as e:
         db.rollback()

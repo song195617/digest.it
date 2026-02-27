@@ -26,6 +26,15 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsState()
     var showOpenAiKey by remember { mutableStateOf(false) }
     var showClaudeKey by remember { mutableStateOf(false) }
+    var showGeminiKey by remember { mutableStateOf(false) }
+    var showCustomAiKey by remember { mutableStateOf(false) }
+    var providerDropdownExpanded by remember { mutableStateOf(false) }
+
+    val providerOptions = listOf(
+        "claude" to "Claude",
+        "gemini" to "Gemini",
+        "openai_compatible" to "自定义 OpenAI 兼容"
+    )
 
     LaunchedEffect(state.savedSuccess) {
         if (state.savedSuccess) {
@@ -59,6 +68,120 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            Text("AI 摘要提供商", style = MaterialTheme.typography.titleSmall)
+            ExposedDropdownMenuBox(
+                expanded = providerDropdownExpanded,
+                onExpandedChange = { providerDropdownExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = providerOptions.firstOrNull { it.first == state.aiProvider }?.second ?: state.aiProvider,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("提供商") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = providerDropdownExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = providerDropdownExpanded,
+                    onDismissRequest = { providerDropdownExpanded = false }
+                ) {
+                    providerOptions.forEach { (value, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                viewModel.onAiProviderChange(value)
+                                providerDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            when (state.aiProvider) {
+                "claude" -> {
+                    OutlinedTextField(
+                        value = state.claudeKey,
+                        onValueChange = viewModel::onClaudeKeyChange,
+                        label = { Text("Claude API Key") },
+                        placeholder = { Text("sk-ant-...") },
+                        visualTransformation = if (showClaudeKey) VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showClaudeKey = !showClaudeKey }) {
+                                Icon(
+                                    if (showClaudeKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+                "gemini" -> {
+                    OutlinedTextField(
+                        value = state.geminiApiKey,
+                        onValueChange = viewModel::onGeminiApiKeyChange,
+                        label = { Text("Gemini API Key") },
+                        placeholder = { Text("AIza...") },
+                        visualTransformation = if (showGeminiKey) VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showGeminiKey = !showGeminiKey }) {
+                                Icon(
+                                    if (showGeminiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+                "openai_compatible" -> {
+                    OutlinedTextField(
+                        value = state.customAiBaseUrl,
+                        onValueChange = viewModel::onCustomAiBaseUrlChange,
+                        label = { Text("Base URL") },
+                        placeholder = { Text("https://api.deepseek.com/v1") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = state.customAiModel,
+                        onValueChange = viewModel::onCustomAiModelChange,
+                        label = { Text("模型名称（可选）") },
+                        placeholder = { Text("deepseek-chat") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = state.customAiApiKey,
+                        onValueChange = viewModel::onCustomAiApiKeyChange,
+                        label = { Text("API Key") },
+                        visualTransformation = if (showCustomAiKey) VisualTransformation.None
+                        else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showCustomAiKey = !showCustomAiKey }) {
+                                Icon(
+                                    if (showCustomAiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            }
+
+            HorizontalDivider()
+
             OutlinedTextField(
                 value = state.openAiKey,
                 onValueChange = viewModel::onOpenAiKeyChange,
@@ -70,26 +193,6 @@ fun SettingsScreen(
                     IconButton(onClick = { showOpenAiKey = !showOpenAiKey }) {
                         Icon(
                             if (showOpenAiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = null
-                        )
-                    }
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            OutlinedTextField(
-                value = state.claudeKey,
-                onValueChange = viewModel::onClaudeKeyChange,
-                label = { Text("Claude API Key（用于摘要和对话）") },
-                placeholder = { Text("sk-ant-...") },
-                visualTransformation = if (showClaudeKey) VisualTransformation.None
-                else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { showClaudeKey = !showClaudeKey }) {
-                        Icon(
-                            if (showClaudeKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = null
                         )
                     }
