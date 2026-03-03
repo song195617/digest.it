@@ -76,14 +76,17 @@ class SettingsViewModel @Inject constructor(
     fun save() {
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
-            prefs.setOpenAiApiKey(_state.value.openAiKey)
-            prefs.setClaudeApiKey(_state.value.claudeKey)
-            prefs.setBackendUrl(_state.value.backendUrl)
-            prefs.setAiProvider(_state.value.aiProvider)
-            prefs.setGeminiApiKey(_state.value.geminiApiKey)
-            prefs.setCustomAiBaseUrl(_state.value.customAiBaseUrl)
-            prefs.setCustomAiModel(_state.value.customAiModel)
-            prefs.setCustomAiApiKey(_state.value.customAiApiKey)
+            // Snapshot all values before any DataStore write, because each write triggers
+            // the combine collector in init which would overwrite _state with stale values.
+            val snapshot = _state.value
+            prefs.setOpenAiApiKey(snapshot.openAiKey)
+            prefs.setClaudeApiKey(snapshot.claudeKey)
+            prefs.setBackendUrl(snapshot.backendUrl)
+            prefs.setAiProvider(snapshot.aiProvider)
+            prefs.setGeminiApiKey(snapshot.geminiApiKey)
+            prefs.setCustomAiBaseUrl(snapshot.customAiBaseUrl)
+            prefs.setCustomAiModel(snapshot.customAiModel)
+            prefs.setCustomAiApiKey(snapshot.customAiApiKey)
             _state.update { it.copy(isSaving = false, savedSuccess = true) }
         }
     }
