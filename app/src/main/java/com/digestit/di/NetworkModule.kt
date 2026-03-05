@@ -30,6 +30,18 @@ object NetworkModule {
     fun provideOkHttpClient(prefs: UserPreferencesDataStore): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor { chain ->
+                // Rewrite base URL dynamically so settings changes take effect immediately
+                val backendUrl = runBlocking { prefs.backendUrl.first() }.trimEnd('/')
+                val parsed = android.net.Uri.parse(backendUrl)
+                val originalUrl = chain.request().url
+                val newUrl = originalUrl.newBuilder()
+                    .scheme(parsed.scheme ?: originalUrl.scheme)
+                    .host(parsed.host ?: originalUrl.host)
+                    .port(if ((parsed.port) != -1) parsed.port else -1)
+                    .build()
+                chain.proceed(chain.request().newBuilder().url(newUrl).build())
+            }
+            .addInterceptor { chain ->
                 val provider = runBlocking { prefs.aiProvider.first() }
                 val aiApiKey = when (provider) {
                     "gemini" -> runBlocking { prefs.geminiApiKey.first() }
@@ -60,14 +72,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(
-        okHttpClient: OkHttpClient,
-        gson: Gson,
-        prefs: UserPreferencesDataStore
-    ): Retrofit {
-        val baseUrl = runBlocking { prefs.backendUrl.first() }.trimEnd('/') + "/"
+    fun provideRetrofit(okHttpClient: OkHttpClient, gson: Gson): Retrofit {
+        // Base URL is a placeholder; the dynamic URL interceptor rewrites it per request
         return Retrofit.Builder()
-            .baseUrl(baseUrl)
+            .baseUrl("http://localhost/")
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
