@@ -95,7 +95,11 @@ class HomeViewModel @Inject constructor(
             val active = works.firstOrNull {
                 it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
             }
-            val jobId = active?.inputData?.getString(JobPollingWorker.KEY_JOB_ID)
+            // WorkInfo doesn't expose inputData; read jobId from the tag we added during enqueue.
+            // The backend jobId is a UUID (36 chars, 4 dashes) — distinct from "episode:..." tags.
+            val jobId = active?.tags?.firstOrNull { tag ->
+                tag.length == 36 && tag.count { it == '-' } == 4
+            }
             _effects.value = if (jobId != null) {
                 HomeEffect.NavigateToProcessing(jobId)
             } else {
