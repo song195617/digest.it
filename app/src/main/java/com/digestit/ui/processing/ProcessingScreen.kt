@@ -31,6 +31,9 @@ fun ProcessingScreen(
                 onProcessingComplete(e.episodeId)
                 viewModel.onEffectConsumed()
             }
+            is ProcessingEffect.ProcessingFailed -> {
+                viewModel.onEffectConsumed()
+            }
             else -> {}
         }
     }

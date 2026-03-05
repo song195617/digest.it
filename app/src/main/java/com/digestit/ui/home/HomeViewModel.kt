@@ -3,9 +3,11 @@ package com.digestit.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.digestit.domain.model.Episode
+import com.digestit.domain.model.ProcessingStatus
 import com.digestit.domain.usecase.GetEpisodesUseCase
 import com.digestit.domain.usecase.SubmitUrlUseCase
 import com.digestit.worker.JobPollingWorker
@@ -13,6 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -63,7 +66,8 @@ class HomeViewModel @Inject constructor(
             when (val result = submitUrl(url)) {
                 is SubmitUrlUseCase.Result.Success -> {
                     val jobId = result.job.jobId
-                    enqueuePollingWorker(jobId)
+                    val episodeId = result.job.episodeId ?: ""
+                    enqueuePollingWorker(jobId, episodeId)
                     _state.update { it.copy(isSubmitting = false, urlInput = "") }
                     _effects.value = HomeEffect.NavigateToProcessing(jobId)
                 }
@@ -80,16 +84,35 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onEpisodeClick(episode: Episode) {
-        _effects.value = HomeEffect.NavigateToSummary(episode.id)
+        if (episode.processingStatus == ProcessingStatus.COMPLETED ||
+            episode.processingStatus == ProcessingStatus.FAILED) {
+            _effects.value = HomeEffect.NavigateToSummary(episode.id)
+            return
+        }
+        // For in-progress episodes, find the active WorkManager job and re-attach
+        viewModelScope.launch {
+            val works = workManager.getWorkInfosByTagFlow("episode:${episode.id}").first()
+            val active = works.firstOrNull {
+                it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+            }
+            val jobId = active?.inputData?.getString(JobPollingWorker.KEY_JOB_ID)
+            _effects.value = if (jobId != null) {
+                HomeEffect.NavigateToProcessing(jobId)
+            } else {
+                HomeEffect.NavigateToSummary(episode.id)
+            }
+        }
     }
 
     fun onEffectConsumed() {
         _effects.value = null
     }
 
-    private fun enqueuePollingWorker(jobId: String) {
+    private fun enqueuePollingWorker(jobId: String, episodeId: String) {
         val request = OneTimeWorkRequestBuilder<JobPollingWorker>()
             .setInputData(workDataOf(JobPollingWorker.KEY_JOB_ID to jobId))
+            .addTag(jobId)                    // ProcessingViewModel observes by this tag
+            .addTag("episode:$episodeId")     // HomeViewModel looks up by episode
             .build()
         workManager.enqueue(request)
     }
