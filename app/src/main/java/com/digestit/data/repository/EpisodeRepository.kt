@@ -22,6 +22,13 @@ class EpisodeRepository @Inject constructor(
     override fun getAllEpisodes(): Flow<List<Episode>> =
         episodeDao.getAllEpisodes().map { entities -> entities.map { it.toDomain() } }
 
+    override suspend fun refreshEpisodes() {
+        try {
+            val remoteEpisodes = api.getEpisodes()
+            remoteEpisodes.forEach { episodeDao.insertEpisode(EpisodeEntity.fromDomain(it.toDomain())) }
+        } catch (ignored: Exception) {}
+    }
+
     override suspend fun getEpisode(episodeId: String): Episode? {
         return try {
             val remote = api.getEpisode(episodeId).toDomain()

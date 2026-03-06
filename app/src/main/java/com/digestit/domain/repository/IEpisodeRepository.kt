@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface IEpisodeRepository {
     fun getAllEpisodes(): Flow<List<Episode>>
+    suspend fun refreshEpisodes()
     suspend fun getEpisode(episodeId: String): Episode?
     suspend fun submitUrl(url: String): ProcessingJob
     suspend fun getJobStatus(jobId: String): ProcessingJob

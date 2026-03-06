@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.digestit.domain.model.Episode
 import com.digestit.domain.model.ProcessingStatus
+import com.digestit.domain.repository.IEpisodeRepository
 import com.digestit.domain.usecase.GetEpisodesUseCase
 import com.digestit.domain.usecase.SubmitUrlUseCase
 import com.digestit.worker.JobPollingWorker
@@ -37,7 +38,8 @@ sealed class HomeEffect {
 class HomeViewModel @Inject constructor(
     private val getEpisodes: GetEpisodesUseCase,
     private val submitUrl: SubmitUrlUseCase,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val repository: IEpisodeRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeState())
@@ -52,6 +54,7 @@ class HomeViewModel @Inject constructor(
                 _state.update { it.copy(episodes = episodes) }
             }
         }
+        viewModelScope.launch { repository.refreshEpisodes() }
     }
 
     fun onUrlInputChange(url: String) {
