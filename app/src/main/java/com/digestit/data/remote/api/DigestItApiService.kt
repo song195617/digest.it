@@ -17,10 +17,10 @@ interface DigestItApiService {
     @GET("v1/episodes/{episodeId}")
     suspend fun getEpisode(@Path("episodeId") episodeId: String): EpisodeResponse
 
-    @GET("v1/transcripts/{episodeId}")
+    @GET("v1/episodes/{episodeId}/transcript")
     suspend fun getTranscript(@Path("episodeId") episodeId: String): TranscriptResponse
 
-    @GET("v1/summaries/{episodeId}")
+    @GET("v1/episodes/{episodeId}/summary")
     suspend fun getSummary(@Path("episodeId") episodeId: String): SummaryResponse
 
     @DELETE("v1/episodes/{episodeId}")

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -15,7 +16,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DigestIt"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
 
         <!-- Main entry Activity -->
         <activity
@@ -41,7 +42,12 @@
             </intent-filter>
         </activity>
 
-        <!-- WorkManager initialization -->
+        <!-- Disable WorkManager's default auto-init via App Startup.
+             DigestItApplication implements Configuration.Provider and uses
+             HiltWorkerFactory. If the default initializer runs first (before
+             Hilt injects workerFactory), workerFactory is null → NPE crash.
+             Setting tools:node="remove" makes WorkManager use lazy init via
+             Configuration.Provider instead. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
@@ -49,8 +55,21 @@
             tools:node="merge">
             <meta-data
                 android:name="androidx.work.WorkManagerInitializer"
-                android:value="androidx.startup" />
+                android:value="androidx.startup"
+                tools:node="remove" />
         </provider>
+
+        <!-- Crash reporter: shows stack trace on screen when app crashes -->
+        <activity
+            android:name=".CrashActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light" />
+
+        <!-- WorkManager's internal foreground service — must declare type for Android 14+ -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <!-- Foreground service for long-running transcription jobs -->
         <service

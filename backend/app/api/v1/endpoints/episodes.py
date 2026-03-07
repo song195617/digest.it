@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.models.episode import Episode, Transcript, Summary
+from app.models.episode import Episode, Transcript, Summary, ProcessingJob, ProcessingStatus
 
 router = APIRouter(prefix="/v1/episodes", tags=["episodes"])
 
@@ -84,6 +84,14 @@ async def delete_episode(episode_id: str, db: Session = Depends(get_db)):
     ep = db.query(Episode).filter(Episode.id == episode_id).first()
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
+    # Cancel any in-progress jobs so Celery tasks fail fast instead of hitting a missing episode
+    active_jobs = db.query(ProcessingJob).filter(
+        ProcessingJob.episode_id == episode_id,
+        ProcessingJob.status.notin_([ProcessingStatus.COMPLETED, ProcessingStatus.FAILED]),
+    ).all()
+    for job in active_jobs:
+        job.status = ProcessingStatus.FAILED
+        job.error_message = "Episode deleted by user"
     db.delete(ep)
     db.commit()
     return {"ok": True}

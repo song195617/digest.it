@@ -1,6 +1,10 @@
 package com.digestit.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,7 +78,35 @@ fun HomeScreen(
             } else {
                 LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(state.episodes, key = { it.id }) { episode ->
-                        EpisodeCard(episode = episode, onClick = { viewModel.onEpisodeClick(episode) })
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { value ->
+                                if (value == SwipeToDismissBoxValue.EndToStart) {
+                                    viewModel.deleteEpisode(episode.id)
+                                    true
+                                } else false
+                            }
+                        )
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            enableDismissFromStartToEnd = false,
+                            backgroundContent = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.errorContainer),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "删除",
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(end = 20.dp)
+                                    )
+                                }
+                            }
+                        ) {
+                            EpisodeCard(episode = episode, onClick = { viewModel.onEpisodeClick(episode) })
+                        }
                     }
                 }
             }

@@ -5,6 +5,7 @@
 /.idea
 .DS_Store
 /build
+app/build/
 /captures
 .externalNativeBuild
 .cxx
@@ -15,11 +16,14 @@
 backend/.env
 backend/__pycache__/
 backend/**/__pycache__/
-backend/*.pyc
+**/__pycache__/
+*.pyc
 backend/.venv/
 backend/venv/
+backend/logs/
 /tmp/digestit_audio/
 
 # General
 *.log
 .env
+*.deb

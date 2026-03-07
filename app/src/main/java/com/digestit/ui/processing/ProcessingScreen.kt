@@ -2,7 +2,7 @@ package com.digestit.ui.processing
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +31,9 @@ fun ProcessingScreen(
                 onProcessingComplete(e.episodeId)
                 viewModel.onEffectConsumed()
             }
+            is ProcessingEffect.ProcessingFailed -> {
+                viewModel.onEffectConsumed()
+            }
             else -> {}
         }
     }
@@ -41,7 +44,7 @@ fun ProcessingScreen(
                 title = { Text("处理中") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 }
             )
