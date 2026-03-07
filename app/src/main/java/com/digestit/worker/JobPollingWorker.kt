@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
@@ -76,7 +78,12 @@ class JobPollingWorker @AssistedInject constructor(
 
     private fun createForegroundInfo(step: String, progress: Float): ForegroundInfo {
         val notification = buildNotification(step, (progress * 100).toInt(), indeterminate = progress == 0f)
-        return ForegroundInfo(NOTIFICATION_ID, notification)
+        // Android 14+ (API 34) requires an explicit foregroundServiceType in ForegroundInfo
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun buildNotification(step: String, progressPct: Int, indeterminate: Boolean): Notification {

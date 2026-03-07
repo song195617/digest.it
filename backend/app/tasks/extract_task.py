@@ -20,6 +20,9 @@ def extract_task(self, job_id: str, episode_id: str, url: str, provider_config_d
         job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
         episode = db.query(Episode).filter(Episode.id == episode_id).first()
 
+        if not episode:
+            raise ValueError(f"Episode {episode_id} not found in database")
+
         _update_job(db, job, ProcessingStatus.EXTRACTING, 0.1, "正在提取内容…")
 
         work_dir = os.path.join(settings.audio_tmp_dir, episode_id)

@@ -115,6 +115,16 @@ class HomeViewModel @Inject constructor(
         _effects.value = null
     }
 
+    fun deleteEpisode(episodeId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteEpisode(episodeId)
+            } catch (e: Exception) {
+                _effects.value = HomeEffect.ShowError(e.message ?: "删除失败")
+            }
+        }
+    }
+
     private fun enqueuePollingWorker(jobId: String, episodeId: String) {
         val request = OneTimeWorkRequestBuilder<JobPollingWorker>()
             .setInputData(workDataOf(JobPollingWorker.KEY_JOB_ID to jobId))

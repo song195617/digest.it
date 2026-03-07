@@ -1,6 +1,7 @@
 package com.digestit
 
 import android.app.Application
+import android.content.Context
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
@@ -19,6 +20,12 @@ class DigestItApplication : Application(), Configuration.Provider {
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
             .build()
+
+    override fun attachBaseContext(base: Context) {
+        // Install BEFORE super.attachBaseContext() so we catch Hilt init crashes too
+        Thread.setDefaultUncaughtExceptionHandler(CrashHandler(this))
+        super.attachBaseContext(base)
+    }
 
     override fun onCreate() {
         super.onCreate()

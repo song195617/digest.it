@@ -33,29 +33,48 @@ object NetworkModule {
                 // Rewrite base URL dynamically so settings changes take effect immediately
                 val backendUrl = runBlocking { prefs.backendUrl.first() }.trimEnd('/')
                 val parsed = android.net.Uri.parse(backendUrl)
+                val scheme = parsed.scheme ?: "http"
+                val host = parsed.host ?: "localhost"
+                // port() rejects -1; derive default from scheme when not explicit
+                val port = when {
+                    parsed.port != -1 -> parsed.port
+                    scheme == "https" -> 443
+                    else -> 80
+                }
                 val originalUrl = chain.request().url
                 val newUrl = originalUrl.newBuilder()
-                    .scheme(parsed.scheme ?: originalUrl.scheme)
-                    .host(parsed.host ?: originalUrl.host)
-                    .port(if ((parsed.port) != -1) parsed.port else -1)
+                    .scheme(scheme)
+                    .host(host)
+                    .port(port)
                     .build()
                 chain.proceed(chain.request().newBuilder().url(newUrl).build())
             }
             .addInterceptor { chain ->
                 val provider = runBlocking { prefs.aiProvider.first() }
                 val aiApiKey = when (provider) {
-                    "gemini" -> runBlocking { prefs.geminiApiKey.first() }
+                    "gemini"            -> runBlocking { prefs.geminiApiKey.first() }
                     "openai_compatible" -> runBlocking { prefs.customAiApiKey.first() }
-                    else -> runBlocking { prefs.claudeApiKey.first() }
+                    "deepseek"          -> runBlocking { prefs.deepseekApiKey.first() }
+                    else                -> runBlocking { prefs.claudeApiKey.first() }
                 }
+                // DeepSeek is OpenAI-compatible; tell the backend to treat it that way
+                val backendProvider = if (provider == "deepseek") "openai_compatible" else provider
                 val requestBuilder = chain.request().newBuilder()
                     .addHeader("X-API-Key", aiApiKey)
-                    .addHeader("X-AI-Provider", provider)
-                if (provider == "openai_compatible") {
-                    val model = runBlocking { prefs.customAiModel.first() }
-                    val baseUrl = runBlocking { prefs.customAiBaseUrl.first() }
-                    if (model.isNotBlank()) requestBuilder.addHeader("X-AI-Model", model)
-                    if (baseUrl.isNotBlank()) requestBuilder.addHeader("X-AI-Base-URL", baseUrl)
+                    .addHeader("X-AI-Provider", backendProvider)
+                when (provider) {
+                    "openai_compatible" -> {
+                        val model   = runBlocking { prefs.customAiModel.first() }
+                        val baseUrl = runBlocking { prefs.customAiBaseUrl.first() }
+                        if (model.isNotBlank())   requestBuilder.addHeader("X-AI-Model", model)
+                        if (baseUrl.isNotBlank()) requestBuilder.addHeader("X-AI-Base-URL", baseUrl)
+                    }
+                    "deepseek" -> {
+                        val model   = runBlocking { prefs.deepseekModel.first() }
+                        val baseUrl = runBlocking { prefs.deepseekBaseUrl.first() }
+                        if (model.isNotBlank())   requestBuilder.addHeader("X-AI-Model", model)
+                        if (baseUrl.isNotBlank()) requestBuilder.addHeader("X-AI-Base-URL", baseUrl)
+                    }
                 }
                 chain.proceed(requestBuilder.build())
             }
