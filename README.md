@@ -25,17 +25,32 @@ Python Backend (FastAPI + Celery + PostgreSQL + Redis)
 
 ### 后端
 
+**前置依赖**：Python 3.10+、PostgreSQL、Redis、FFmpeg
+
 ```bash
-cd backend
-cp .env.example .env
-# 编辑 .env 填写 API Key
-docker-compose up -d
+# 1. 首次部署：初始化环境、安装依赖、建库建表
+bash setup-backend.sh
+
+# 2. 编辑环境变量（填写 API Key 和数据库密码）
+vi backend/.env
+
+# 3. 启动所有服务
+bash start-backend.sh
+
+# 停止服务
+bash stop-backend.sh
+```
+
+**GPU 加速**（可选）：如有 NVIDIA GPU，`setup-backend.sh` 会自动安装 CUDA 库，Whisper 转录将自动使用 GPU。同时建议在 `.env` 中将：
+```
+WHISPER_DEVICE=cuda
+WHISPER_COMPUTE_TYPE=float16
 ```
 
 ### Android
 
 1. 用 Android Studio 打开 `app/` 目录
-2. 首次启动 App 在设置页填写 API Key
+2. 首次启动 App 在设置页填写后端地址和 API Key
 3. 编译运行
 
 ## 费用估算
