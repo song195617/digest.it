@@ -64,35 +64,50 @@ for pkg in "${PACKAGES[@]}"; do
     fi
 done
 
-# ── 4. Gradle wrapper ─────────────────────────────────────────────────────────
-WRAPPER_PROPS="$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.properties"
+# ── 4. Gradle binary + thin gradlew ──────────────────────────────────────────
+GRADLE_BIN="$HOME/.local/gradle-${GRADLE_VERSION}/bin/gradle"
 GRADLEW="$SCRIPT_DIR/gradlew"
 
-if [[ -f "$GRADLEW" ]]; then
-    info "Gradle wrapper already present."
+if [[ ! -f "$GRADLE_BIN" ]]; then
+    info "Downloading Gradle $GRADLE_VERSION..."
+    mkdir -p "$HOME/.local"
+    TMP_GZIP="$(mktemp /tmp/gradle.XXXXXX.zip)"
+    wget -q --show-progress -O "$TMP_GZIP" \
+        "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+    unzip -q "$TMP_GZIP" -d "$HOME/.local"
+    rm -f "$TMP_GZIP"
+    info "Gradle $GRADLE_VERSION installed at $GRADLE_BIN"
 else
-    info "Generating Gradle $GRADLE_VERSION wrapper..."
+    info "Gradle $GRADLE_VERSION already present."
+fi
 
-    GRADLE_DIST_DIR="$HOME/.gradle/dists/gradle-${GRADLE_VERSION}-bin"
-    GRADLE_BIN="$HOME/.local/gradle-${GRADLE_VERSION}/bin/gradle"
-
-    if [[ ! -f "$GRADLE_BIN" ]]; then
-        GRADLE_ZIP_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
-        info "Downloading Gradle $GRADLE_VERSION..."
-        mkdir -p "$HOME/.local"
-        TMP_GZIP="$(mktemp /tmp/gradle.XXXXXX.zip)"
-        wget -q --show-progress -O "$TMP_GZIP" "$GRADLE_ZIP_URL"
-        unzip -q "$TMP_GZIP" -d "$HOME/.local"
-        rm -f "$TMP_GZIP"
-    fi
-
+# Write a thin gradlew that delegates to the local Gradle binary.
+# This avoids the gradle-wrapper.jar requirement and the URL verification step.
+if [[ ! -f "$GRADLEW" ]]; then
     mkdir -p "$SCRIPT_DIR/gradle/wrapper"
-    (cd "$SCRIPT_DIR" && "$HOME/.local/gradle-${GRADLE_VERSION}/bin/gradle" wrapper \
-        --gradle-version "$GRADLE_VERSION" \
-        --distribution-type bin \
-        --quiet)
+    cat > "$GRADLEW" <<'GRADLEW_SCRIPT'
+#!/usr/bin/env bash
+GRADLE_BIN="${GRADLE_BIN:-$HOME/.local/gradle-8.7/bin/gradle}"
+if [[ ! -x "$GRADLE_BIN" ]]; then
+    echo "ERROR: Gradle not found at $GRADLE_BIN. Run: bash setup-android-build.sh"
+    exit 1
+fi
+exec "$GRADLE_BIN" "$@"
+GRADLEW_SCRIPT
     chmod +x "$GRADLEW"
-    info "Gradle wrapper generated."
+    # Write properties file for IDE compatibility
+    cat > "$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.properties" <<PROPS
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+PROPS
+    info "gradlew created (delegates to local Gradle $GRADLE_VERSION)."
+else
+    info "gradlew already present."
 fi
 
 # ── 5. Persist env vars in ~/.bashrc ──────────────────────────────────────────

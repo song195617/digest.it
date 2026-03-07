@@ -139,7 +139,7 @@ if [[ -n "$APK_FILE" ]]; then
     # Windows-accessible path for easy copy
     WSL_WIN_PATH=$(wslpath -w "$APK_FILE" 2>/dev/null || true)
     if [[ -n "$WSL_WIN_PATH" ]]; then
-        echo -e "  Windows path: ${YELLOW}$WSL_WIN_PATH${NC}"
+        printf "  Windows path: %s\n" "$WSL_WIN_PATH"
         echo -e "  (Copy this to your phone or use:  adb install \"$APK_FILE\")"
     fi
 else

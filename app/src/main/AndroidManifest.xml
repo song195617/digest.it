@@ -42,7 +42,12 @@
             </intent-filter>
         </activity>
 
-        <!-- WorkManager initialization -->
+        <!-- Disable WorkManager's default auto-init via App Startup.
+             DigestItApplication implements Configuration.Provider and uses
+             HiltWorkerFactory. If the default initializer runs first (before
+             Hilt injects workerFactory), workerFactory is null → NPE crash.
+             Setting tools:node="remove" makes WorkManager use lazy init via
+             Configuration.Provider instead. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
@@ -50,7 +55,8 @@
             tools:node="merge">
             <meta-data
                 android:name="androidx.work.WorkManagerInitializer"
-                android:value="androidx.startup" />
+                android:value="androidx.startup"
+                tools:node="remove" />
         </provider>
 
         <!-- Foreground service for long-running transcription jobs -->
