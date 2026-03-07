@@ -1,17 +1,17 @@
 """
-Local Whisper transcription service using faster-whisper.
-Handles long-form audio (1-2 hours) without chunking limits.
+Local faster-whisper transcription service.
+Runs entirely on the backend server — no API key or upload required.
 """
-import os
+import asyncio
 from dataclasses import dataclass
 from faster_whisper import WhisperModel
+from app.services.transcription.audio_processor import normalize_audio
 from app.config import settings
 
 _model: WhisperModel | None = None
 
 
 def _get_model() -> WhisperModel:
-    """Load model once and reuse across tasks."""
     global _model
     if _model is None:
         _model = WhisperModel(
@@ -37,6 +37,21 @@ class TranscriptionResult:
     word_count: int
 
 
+def _transcribe_sync(audio_path: str, language: str) -> list[TranscriptSegment]:
+    model = _get_model()
+    segments_iter, _ = model.transcribe(
+        audio_path,
+        language=language,
+        beam_size=5,
+        vad_filter=True,
+        vad_parameters={"min_silence_duration_ms": 500},
+    )
+    return [
+        TranscriptSegment(int(seg.start * 1000), int(seg.end * 1000), seg.text.strip())
+        for seg in segments_iter
+    ]
+
+
 async def transcribe_audio(
     audio_path: str,
     work_dir: str,
@@ -44,42 +59,26 @@ async def transcribe_audio(
     progress_callback=None,
 ) -> TranscriptionResult:
     """
-    Transcribe audio file using local faster-whisper model.
-    faster-whisper handles long files internally, no manual chunking needed.
+    Transcribe audio using local faster-whisper model.
+    Supports arbitrary-length audio with no chunking required.
     """
-    from app.services.transcription.audio_processor import normalize_audio
-
     normalized_path = normalize_audio(audio_path, work_dir)
 
     if progress_callback:
         await progress_callback(0, 1)
 
-    model = _get_model()
-    segments_iter, info = model.transcribe(
-        normalized_path,
-        language=language,
-        beam_size=5,
-        vad_filter=True,           # skip silence automatically
-        vad_parameters={"min_silence_duration_ms": 500},
-    )
-
-    result_segments: list[TranscriptSegment] = []
-    for seg in segments_iter:
-        result_segments.append(TranscriptSegment(
-            start_ms=int(seg.start * 1000),
-            end_ms=int(seg.end * 1000),
-            text=seg.text.strip(),
-        ))
+    loop = asyncio.get_event_loop()
+    segments = await loop.run_in_executor(None, _transcribe_sync, normalized_path, language)
 
     if progress_callback:
         await progress_callback(1, 1)
 
-    full_text = " ".join(s.text for s in result_segments)
+    full_text = " ".join(s.text for s in segments)
     word_count = len(full_text.replace(" ", ""))
 
     return TranscriptionResult(
         full_text=full_text,
-        segments=result_segments,
-        language=info.language,
+        segments=segments,
+        language=language,
         word_count=word_count,
     )
