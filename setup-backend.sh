@@ -50,7 +50,7 @@ if [[ -f "$BACKEND/.env" ]]; then
     info ".env 已存在，跳过复制"
 else
     cp "$BACKEND/.env.example" "$BACKEND/.env"
-    warn ".env 已从 .env.example 复制，请编辑填入真实配置："
+    warn ".env 已从 .env.example 复制，请按需调整数据库/Redis/Whisper 配置："
     warn "  $BACKEND/.env"
 fi
 
@@ -94,5 +94,5 @@ echo ""
 echo -e "${GREEN}✓ 初始化完成！${NC}"
 echo ""
 echo -e "  下一步："
-echo -e "  1. 编辑 ${YELLOW}backend/.env${NC} 填入 API Key 和数据库密码"
+echo -e "  1. 编辑 ${YELLOW}backend/.env${NC}：数据库/Redis 必填，AI Key 仅作为后端兜底可选；Whisper 默认优先使用 GPU"
 echo -e "  2. 运行 ${GREEN}bash start-backend.sh${NC} 启动服务"

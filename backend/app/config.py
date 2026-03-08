@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     claude_api_key: str = ""
     audio_tmp_dir: str = "/tmp/digestit_audio"
     whisper_model: str = "large-v3"
-    whisper_device: str = "cpu"
-    whisper_compute_type: str = "int8"
+    whisper_device: str = "cuda"
+    whisper_compute_type: str = "float16"
     debug: bool = False
     cors_allowed_origins_raw: str = (
         "http://localhost,"

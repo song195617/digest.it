@@ -5,7 +5,7 @@
 ## 功能
 
 - **链接提取**：支持小宇宙和哔哩哔哩链接，从分享菜单或手动粘贴
-- **自动转录**：使用 OpenAI Whisper API 转录音频（自动分段处理长达 2 小时的内容）
+- **自动转录**：使用本地 faster-whisper 转录音频（自动分段处理长达 2 小时的内容）
 - **B站字幕优先**：哔哩哔哩视频优先使用 AI 字幕，节省转录费用
 - **AI 摘要**：使用 Claude API 生成结构化摘要（一句话概括、核心要点、精彩片段）
 - **AI 对话**：基于转录内容的流式 AI 对话，支持时间戳引用
@@ -18,7 +18,7 @@ Android App (Kotlin + Jetpack Compose + MVVM)
     ↕ HTTPS / WebSocket
 Python Backend (FastAPI + Celery + PostgreSQL + Redis)
     ↕
-外部 API: OpenAI Whisper | Claude API | Bilibili API | 小宇宙
+外部 API: Claude / Gemini / OpenAI-Compatible | Bilibili API | 小宇宙
 ```
 
 ## 快速开始
@@ -31,7 +31,10 @@ Python Backend (FastAPI + Celery + PostgreSQL + Redis)
 # 1. 首次部署：初始化环境、安装依赖、建库建表
 bash setup-backend.sh
 
-# 2. 编辑环境变量（填写 API Key 和数据库密码）
+# 2. 编辑环境变量
+#    DATABASE_URL / REDIS_URL 必填
+#    CLAUDE_API_KEY / OPENAI_API_KEY 仅是后端兜底 key，可留空
+#    手机 App 正常会把 X-AI-Provider / X-API-Key 随请求发给后端
 vi backend/.env
 
 # 3. 启动所有服务
@@ -41,11 +44,13 @@ bash start-backend.sh
 bash stop-backend.sh
 ```
 
-**GPU 加速**（可选）：如有 NVIDIA GPU，`setup-backend.sh` 会自动安装 CUDA 库，Whisper 转录将自动使用 GPU。同时建议在 `.env` 中将：
+**Whisper 默认值**：现在后端默认优先使用 GPU 转录：
 ```
 WHISPER_DEVICE=cuda
 WHISPER_COMPUTE_TYPE=float16
 ```
+
+如果机器没有可用的 NVIDIA/CUDA 环境，服务会自动回退到 `cpu + int8`。
 
 ### Android 本地编译
 
