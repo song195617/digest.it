@@ -68,11 +68,23 @@ class HomeViewModel @Inject constructor(
             _state.update { it.copy(isSubmitting = true, error = null) }
             when (val result = submitUrl(url)) {
                 is SubmitUrlUseCase.Result.Success -> {
-                    val jobId = result.job.jobId
-                    val episodeId = result.job.episodeId ?: ""
-                    enqueuePollingWorker(jobId, episodeId)
+                    val job = result.job
+                    val episodeId = job.episodeId
                     _state.update { it.copy(isSubmitting = false, urlInput = "") }
-                    _effects.value = HomeEffect.NavigateToProcessing(jobId)
+                    when (job.status) {
+                        ProcessingStatus.COMPLETED,
+                        ProcessingStatus.FAILED -> {
+                            if (episodeId != null) {
+                                _effects.value = HomeEffect.NavigateToSummary(episodeId)
+                            } else {
+                                _effects.value = HomeEffect.ShowError(job.errorMessage ?: "任务状态异常")
+                            }
+                        }
+                        else -> {
+                            enqueuePollingWorker(job.jobId, episodeId.orEmpty())
+                            _effects.value = HomeEffect.NavigateToProcessing(job.jobId)
+                        }
+                    }
                 }
                 is SubmitUrlUseCase.Result.UnsupportedPlatform -> {
                     _state.update {
@@ -88,18 +100,16 @@ class HomeViewModel @Inject constructor(
 
     fun onEpisodeClick(episode: Episode) {
         if (episode.processingStatus == ProcessingStatus.COMPLETED ||
-            episode.processingStatus == ProcessingStatus.FAILED) {
+            episode.processingStatus == ProcessingStatus.FAILED
+        ) {
             _effects.value = HomeEffect.NavigateToSummary(episode.id)
             return
         }
-        // For in-progress episodes, find the active WorkManager job and re-attach
         viewModelScope.launch {
             val works = workManager.getWorkInfosByTagFlow("episode:${episode.id}").first()
             val active = works.firstOrNull {
                 it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
             }
-            // WorkInfo doesn't expose inputData; read jobId from the tag we added during enqueue.
-            // The backend jobId is a UUID (36 chars, 4 dashes) — distinct from "episode:..." tags.
             val jobId = active?.tags?.firstOrNull { tag ->
                 tag.length == 36 && tag.count { it == '-' } == 4
             }
@@ -128,8 +138,8 @@ class HomeViewModel @Inject constructor(
     private fun enqueuePollingWorker(jobId: String, episodeId: String) {
         val request = OneTimeWorkRequestBuilder<JobPollingWorker>()
             .setInputData(workDataOf(JobPollingWorker.KEY_JOB_ID to jobId))
-            .addTag(jobId)                    // ProcessingViewModel observes by this tag
-            .addTag("episode:$episodeId")     // HomeViewModel looks up by episode
+            .addTag(jobId)
+            .addTag("episode:$episodeId")
             .build()
         workManager.enqueue(request)
     }

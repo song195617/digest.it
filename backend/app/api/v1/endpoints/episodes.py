@@ -1,9 +1,13 @@
 import json
+import shutil
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from app.config import settings
+from app.core.celery_app import celery_app
 from app.core.database import get_db
-from app.models.episode import Episode, Transcript, Summary, ProcessingJob, ProcessingStatus
+from app.models.episode import Episode, Transcript, Summary, ProcessingJob, ProcessingStatus, ChatMessage
 
 router = APIRouter(prefix="/v1/episodes", tags=["episodes"])
 
@@ -84,44 +88,53 @@ async def delete_episode(episode_id: str, db: Session = Depends(get_db)):
     ep = db.query(Episode).filter(Episode.id == episode_id).first()
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
-    # Cancel any in-progress jobs so Celery tasks fail fast instead of hitting a missing episode
-    active_jobs = db.query(ProcessingJob).filter(
-        ProcessingJob.episode_id == episode_id,
-        ProcessingJob.status.notin_([ProcessingStatus.COMPLETED, ProcessingStatus.FAILED]),
-    ).all()
-    for job in active_jobs:
+
+    jobs = db.query(ProcessingJob).filter(ProcessingJob.episode_id == episode_id).all()
+    for job in jobs:
+        if job.celery_task_id and job.status not in {ProcessingStatus.COMPLETED, ProcessingStatus.FAILED}:
+            try:
+                celery_app.control.revoke(job.celery_task_id, terminate=False)
+            except Exception:
+                pass
         job.status = ProcessingStatus.FAILED
         job.error_message = "Episode deleted by user"
+
+    db.query(Transcript).filter(Transcript.episode_id == episode_id).delete(synchronize_session=False)
+    db.query(Summary).filter(Summary.episode_id == episode_id).delete(synchronize_session=False)
+    db.query(ChatMessage).filter(ChatMessage.episode_id == episode_id).delete(synchronize_session=False)
+    db.query(ProcessingJob).filter(ProcessingJob.episode_id == episode_id).delete(synchronize_session=False)
     db.delete(ep)
     db.commit()
+
+    shutil.rmtree(Path(settings.audio_tmp_dir) / episode_id, ignore_errors=True)
     return {"ok": True}
 
 
 @router.get("/{episode_id}/transcript", response_model=TranscriptResponse)
 async def get_transcript(episode_id: str, db: Session = Depends(get_db)):
-    t = db.query(Transcript).filter(Transcript.episode_id == episode_id).first()
-    if not t:
+    transcript = db.query(Transcript).filter(Transcript.episode_id == episode_id).first()
+    if not transcript:
         raise HTTPException(status_code=404, detail="Transcript not ready yet")
-    segments = json.loads(t.segments_json) if t.segments_json else []
+    segments = json.loads(transcript.segments_json) if transcript.segments_json else []
     return TranscriptResponse(
-        episode_id=t.episode_id,
-        full_text=t.full_text,
-        segments=[SegmentDto(**s) for s in segments],
-        language=t.language,
-        word_count=t.word_count,
+        episode_id=transcript.episode_id,
+        full_text=transcript.full_text,
+        segments=[SegmentDto(**segment) for segment in segments],
+        language=transcript.language,
+        word_count=transcript.word_count,
     )
 
 
 @router.get("/{episode_id}/summary", response_model=SummaryResponse)
 async def get_summary(episode_id: str, db: Session = Depends(get_db)):
-    s = db.query(Summary).filter(Summary.episode_id == episode_id).first()
-    if not s:
+    summary = db.query(Summary).filter(Summary.episode_id == episode_id).first()
+    if not summary:
         raise HTTPException(status_code=404, detail="Summary not ready yet")
     return SummaryResponse(
-        episode_id=s.episode_id,
-        one_liner=s.one_liner,
-        key_points=json.loads(s.key_points_json) if s.key_points_json else [],
-        topics=json.loads(s.topics_json) if s.topics_json else [],
-        highlights=[HighlightDto(**h) for h in (json.loads(s.highlights_json) if s.highlights_json else [])],
-        full_summary=s.full_summary,
+        episode_id=summary.episode_id,
+        one_liner=summary.one_liner,
+        key_points=json.loads(summary.key_points_json) if summary.key_points_json else [],
+        topics=json.loads(summary.topics_json) if summary.topics_json else [],
+        highlights=[HighlightDto(**highlight) for highlight in (json.loads(summary.highlights_json) if summary.highlights_json else [])],
+        full_summary=summary.full_summary,
     )

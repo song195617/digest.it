@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 from anthropic import AsyncAnthropic
 from app.services.ai.base import AIService
 from app.services.ai.provider_config import ProviderConfig
-from app.services.ai._utils import truncate_transcript, format_transcript_with_timestamps
+from app.services.ai._utils import build_chat_context, truncate_transcript
 from app.services.ai.prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_TEMPLATE, CHAT_SYSTEM_TEMPLATE
 
 
@@ -52,13 +52,12 @@ class ClaudeService(AIService):
         chat_history: list[dict],
         user_message: str,
     ) -> AsyncGenerator[str, None]:
-        transcript_with_ts = format_transcript_with_timestamps(segments)
-        truncated_transcript = truncate_transcript(transcript_with_ts)
+        transcript_context = build_chat_context(full_text, segments)
 
         system_prompt = CHAT_SYSTEM_TEMPLATE.format(
             title=title,
             author=author,
-            transcript_with_timestamps=truncated_transcript,
+            transcript_with_timestamps=transcript_context,
         )
 
         messages = []
@@ -76,7 +75,6 @@ class ClaudeService(AIService):
                 yield text
 
 
-# Backwards-compat shims for any code not yet migrated to the factory pattern
 from app.config import settings
 from app.services.ai.provider_config import PROVIDER_CLAUDE, CLAUDE_DEFAULT_MODEL
 

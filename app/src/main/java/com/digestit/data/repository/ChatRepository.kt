@@ -1,8 +1,8 @@
 package com.digestit.data.repository
 
+import com.digestit.data.local.datastore.UserPreferencesDataStore
 import com.digestit.data.local.db.dao.ChatDao
 import com.digestit.data.local.db.entity.ChatMessageEntity
-import com.digestit.data.local.datastore.UserPreferencesDataStore
 import com.digestit.data.remote.websocket.ChatWebSocketManager
 import com.digestit.domain.model.ChatMessage
 import com.digestit.domain.model.ChatSession
@@ -10,7 +10,9 @@ import com.digestit.domain.model.MessageRole
 import com.digestit.domain.repository.IChatRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.util.UUID
@@ -23,16 +25,22 @@ class ChatRepository @Inject constructor(
 ) : IChatRepository {
 
     override fun getChatSession(episodeId: String): Flow<ChatSession?> =
-        chatDao.getMessages(episodeId).map { entities ->
-            if (entities.isEmpty()) null
-            else {
-                val sessionId = entities.first().sessionId
-                ChatSession(
-                    id = sessionId,
-                    episodeId = episodeId,
-                    createdAt = Instant.ofEpochMilli(entities.first().timestamp),
-                    messages = entities.map { it.toDomain() }
-                )
+        chatDao.observeLatestSessionId(episodeId).flatMapLatest { latestSessionId ->
+            if (latestSessionId.isNullOrBlank()) {
+                flowOf(null)
+            } else {
+                chatDao.getMessages(episodeId, latestSessionId).map { entities ->
+                    if (entities.isEmpty()) {
+                        null
+                    } else {
+                        ChatSession(
+                            id = latestSessionId,
+                            episodeId = episodeId,
+                            createdAt = Instant.ofEpochMilli(entities.first().timestamp),
+                            messages = entities.map { it.toDomain() }
+                        )
+                    }
+                }
             }
         }
 
@@ -42,12 +50,11 @@ class ChatRepository @Inject constructor(
         userMessage: String
     ): Flow<ChatMessage> = flow {
         val baseUrl = prefs.backendUrl.first()
-        val resolvedSessionId = sessionId ?: chatDao.getSessionId(episodeId)
+        val resolvedSessionId = sessionId ?: chatDao.getLatestSessionId(episodeId) ?: UUID.randomUUID().toString()
 
-        // Save user message to local DB
         val userMsg = ChatMessage(
             id = UUID.randomUUID().toString(),
-            sessionId = resolvedSessionId ?: UUID.randomUUID().toString(),
+            sessionId = resolvedSessionId,
             role = MessageRole.USER,
             content = userMessage,
             timestamp = Instant.now()
@@ -55,19 +62,21 @@ class ChatRepository @Inject constructor(
         chatDao.insertMessage(ChatMessageEntity.fromDomain(userMsg, episodeId))
         emit(userMsg)
 
-        // Stream assistant response via WebSocket (AI headers added by OkHttp interceptor)
         var lastAssistantMsg: ChatMessage? = null
-        webSocketManager.streamChatResponse(
-            baseUrl = baseUrl,
-            episodeId = episodeId,
-            sessionId = resolvedSessionId,
-            userMessage = userMessage
-        ).collect { chunk ->
-            lastAssistantMsg = chunk
-            emit(chunk)
+        try {
+            webSocketManager.streamChatResponse(
+                baseUrl = baseUrl,
+                episodeId = episodeId,
+                sessionId = resolvedSessionId,
+                userMessage = userMessage
+            ).collect { chunk ->
+                lastAssistantMsg = chunk
+                emit(chunk)
+            }
+        } catch (error: Throwable) {
+            throw IllegalStateException(error.message ?: "AI 对话失败")
         }
 
-        // Persist final assistant message (non-streaming)
         lastAssistantMsg?.let { final ->
             if (!final.isStreaming) {
                 chatDao.insertMessage(ChatMessageEntity.fromDomain(final, episodeId))

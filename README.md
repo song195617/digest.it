@@ -47,11 +47,47 @@ WHISPER_DEVICE=cuda
 WHISPER_COMPUTE_TYPE=float16
 ```
 
-### Android
+### Android 本地编译
 
-1. 用 Android Studio 打开 `app/` 目录
-2. 首次启动 App 在设置页填写后端地址和 API Key
-3. 编译运行
+#### Windows 本机
+
+```powershell
+# 1. 一次性准备本地构建环境
+powershell -ExecutionPolicy Bypass -File .\setup-android-build.ps1
+
+# 2. 编译 debug APK
+powershell -ExecutionPolicy Bypass -File .\build-apk.ps1
+
+# 3. 编译 release APK
+powershell -ExecutionPolicy Bypass -File .\build-apk.ps1 -Release
+```
+
+说明：
+- `setup-android-build.ps1` 会优先复用 Android Studio 自带的 JBR 17，并把 `JAVA_HOME`、`ANDROID_HOME` 写入当前用户环境变量。
+- `build-apk.ps1` 会先做安全检查，再执行 `:app:assembleDebug` 或 `:app:assembleRelease`。
+- 编译成功后，可直接用脚本输出的 `adb install -r ...` 命令安装到手机。
+
+#### WSL / Linux
+
+```bash
+bash setup-android-build.sh
+bash build-apk.sh
+```
+
+### GitHub APK 下载流程
+
+仓库内置了 GitHub Actions 工作流 [`android-apk.yml`](.github/workflows/android-apk.yml)：
+
+- 推送到 `main` 后，会自动构建 debug APK 并上传为 Actions artifact。
+- 手动触发 `workflow_dispatch` 时，可选择 `publish_release=true`，自动创建一个 prerelease 并附带 APK。
+- 推送 `apk-*` 标签时，也会自动生成带 APK 的 prerelease，适合给手机直接下载安装测试。
+
+建议测试流程：
+
+1. 本地执行 `build-apk.ps1` 确认能编过。
+2. 提交并推送到 GitHub。
+3. 需要手机直接下载时，手动触发 Actions 并勾选 `publish_release`，或推一个 `apk-*` 标签。
+4. 在 GitHub Release 页面下载 APK 到手机安装。
 
 ## 费用估算
 

@@ -1,0 +1,75 @@
+name: android-apk
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'apk-*'
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Create a prerelease with the generated APK'
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/*.apk dist/digestit-debug-${GITHUB_SHA::7}.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digestit-debug-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Publish prerelease
+        if: startsWith(github.ref, 'refs/tags/apk-') || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/apk-') && github.ref_name || format('test-build-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/apk-') && github.ref_name || format('digest.it test build #{0}', github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          files: dist/*.apk

@@ -1,6 +1,5 @@
 package com.digestit.ui.summary
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -8,14 +7,32 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.digestit.domain.model.Highlight
+import com.digestit.ui.common.formatTimestamp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,14 +65,18 @@ fun SummaryScreen(
         },
         bottomBar = {
             BottomAppBar {
-                Spacer(modifier = Modifier.weight(1f))
-                Button(
-                    onClick = onNavigateToChat,
-                    modifier = Modifier.padding(end = 16.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Icon(Icons.Default.Chat, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("AI 对话")
+                    Button(
+                        onClick = onNavigateToChat,
+                        modifier = Modifier.padding(end = 16.dp)
+                    ) {
+                        Icon(Icons.Default.Chat, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("AI 对话")
+                    }
                 }
             }
         }
@@ -76,7 +97,6 @@ fun SummaryScreen(
         }
 
         Column(modifier = Modifier.padding(paddingValues)) {
-            // One-liner card
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.fillMaxWidth()
@@ -88,7 +108,6 @@ fun SummaryScreen(
                 )
             }
 
-            // Tab row
             TabRow(selectedTabIndex = state.selectedTab.ordinal) {
                 Tab(
                     selected = state.selectedTab == SummaryTab.KEY_POINTS,
@@ -145,7 +164,11 @@ private fun KeyPointsList(keyPoints: List<String>) {
 private fun FullSummaryContent(fullSummary: String) {
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
         item {
-            Text(fullSummary, style = MaterialTheme.typography.bodyMedium, lineHeight = MaterialTheme.typography.bodyMedium.lineHeight)
+            Text(
+                fullSummary,
+                style = MaterialTheme.typography.bodyMedium,
+                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
+            )
         }
     }
 }
@@ -153,15 +176,12 @@ private fun FullSummaryContent(fullSummary: String) {
 @Composable
 private fun HighlightsList(highlights: List<Highlight>) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(highlights.size) { index ->
-            val highlight = highlights[index]
+        itemsIndexed(highlights) { _, highlight ->
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    val minutes = highlight.timestampMs / 60000
-                    val seconds = (highlight.timestampMs % 60000) / 1000
                     SuggestionChip(
                         onClick = {},
-                        label = { Text("%02d:%02d".format(minutes, seconds)) }
+                        label = { Text(formatTimestamp(highlight.timestampMs)) }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(

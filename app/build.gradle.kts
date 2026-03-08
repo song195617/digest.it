@@ -9,6 +9,7 @@ plugins {
 android {
     namespace = "com.digestit"
     compileSdk = 35
+    buildToolsVersion = "35.0.0"
 
     defaultConfig {
         applicationId = "com.digestit"
@@ -23,6 +24,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            manifestPlaceholders["allowBackup"] = false
+            manifestPlaceholders["usesCleartextTraffic"] = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -30,6 +33,8 @@ android {
         }
         debug {
             isDebuggable = true
+            manifestPlaceholders["allowBackup"] = true
+            manifestPlaceholders["usesCleartextTraffic"] = true
         }
     }
 
@@ -45,6 +50,12 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    packaging {
+        jniLibs {
+            keepDebugSymbols += setOf("**/libdatastore_shared_counter.so")
+        }
     }
 }
 

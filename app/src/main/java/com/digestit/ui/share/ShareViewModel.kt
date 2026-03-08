@@ -6,6 +6,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.digestit.domain.model.Platform
+import com.digestit.domain.model.ProcessingStatus
 import com.digestit.domain.usecase.DetectPlatformUseCase
 import com.digestit.domain.usecase.SubmitUrlUseCase
 import com.digestit.worker.JobPollingWorker
@@ -46,12 +47,18 @@ class ShareViewModel @Inject constructor(
             _state.update { it.copy(isSubmitting = true) }
             when (val result = submitUrl(url)) {
                 is SubmitUrlUseCase.Result.Success -> {
-                    val jobId = result.job.jobId
-                    val request = OneTimeWorkRequestBuilder<JobPollingWorker>()
-                        .setInputData(workDataOf(JobPollingWorker.KEY_JOB_ID to jobId))
-                        .build()
-                    workManager.enqueue(request)
-                    _state.update { it.copy(isSubmitting = false, isStarted = true) }
+                    val job = result.job
+                    if (job.status != ProcessingStatus.COMPLETED && job.status != ProcessingStatus.FAILED) {
+                        val request = OneTimeWorkRequestBuilder<JobPollingWorker>()
+                            .setInputData(workDataOf(JobPollingWorker.KEY_JOB_ID to job.jobId))
+                            .addTag(job.jobId)
+                            .apply {
+                                job.episodeId?.let { addTag("episode:$it") }
+                            }
+                            .build()
+                        workManager.enqueue(request)
+                    }
+                    _state.update { it.copy(isSubmitting = false, isStarted = true, error = null) }
                 }
                 is SubmitUrlUseCase.Result.UnsupportedPlatform -> {
                     _state.update { it.copy(isSubmitting = false, error = "不支持该链接") }

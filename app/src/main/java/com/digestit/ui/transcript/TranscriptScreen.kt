@@ -6,13 +6,26 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.digestit.domain.model.TranscriptSegment
+import com.digestit.ui.common.formatTimestamp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,11 +102,9 @@ private fun TranscriptSegmentItem(segment: TranscriptSegment) {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
-        val minutes = segment.startMs / 60000
-        val seconds = (segment.startMs % 60000) / 1000
         SuggestionChip(
             onClick = {},
-            label = { Text("%02d:%02d".format(minutes, seconds), style = MaterialTheme.typography.labelSmall) },
+            label = { Text(formatTimestamp(segment.startMs), style = MaterialTheme.typography.labelSmall) },
             modifier = Modifier.padding(end = 8.dp)
         )
         Text(

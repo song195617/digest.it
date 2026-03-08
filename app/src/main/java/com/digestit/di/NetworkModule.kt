@@ -1,5 +1,6 @@
 package com.digestit.di
 
+import com.digestit.BuildConfig
 import com.digestit.data.local.datastore.UserPreferencesDataStore
 import com.digestit.data.remote.api.DigestItApiService
 import com.google.gson.Gson
@@ -8,8 +9,6 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -28,14 +27,13 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(prefs: UserPreferencesDataStore): OkHttpClient {
-        return OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .addInterceptor { chain ->
-                // Rewrite base URL dynamically so settings changes take effect immediately
-                val backendUrl = runBlocking { prefs.backendUrl.first() }.trimEnd('/')
+                val snapshot = prefs.currentNetworkSettings.value
+                val backendUrl = snapshot.backendUrl.trimEnd('/')
                 val parsed = android.net.Uri.parse(backendUrl)
                 val scheme = parsed.scheme ?: "http"
                 val host = parsed.host ?: "localhost"
-                // port() rejects -1; derive default from scheme when not explicit
                 val port = when {
                     parsed.port != -1 -> parsed.port
                     scheme == "https" -> 443
@@ -50,49 +48,58 @@ object NetworkModule {
                 chain.proceed(chain.request().newBuilder().url(newUrl).build())
             }
             .addInterceptor { chain ->
-                val provider = runBlocking { prefs.aiProvider.first() }
+                val snapshot = prefs.currentNetworkSettings.value
+                val provider = snapshot.aiProvider
                 val aiApiKey = when (provider) {
-                    "gemini"            -> runBlocking { prefs.geminiApiKey.first() }
-                    "openai_compatible" -> runBlocking { prefs.customAiApiKey.first() }
-                    "deepseek"          -> runBlocking { prefs.deepseekApiKey.first() }
-                    else                -> runBlocking { prefs.claudeApiKey.first() }
+                    "gemini" -> snapshot.geminiApiKey
+                    "openai_compatible" -> snapshot.customAiApiKey
+                    "deepseek" -> snapshot.deepseekApiKey
+                    else -> snapshot.claudeApiKey
                 }
-                // DeepSeek is OpenAI-compatible; tell the backend to treat it that way
                 val backendProvider = if (provider == "deepseek") "openai_compatible" else provider
                 val requestBuilder = chain.request().newBuilder()
-                    .addHeader("X-API-Key", aiApiKey)
                     .addHeader("X-AI-Provider", backendProvider)
+                if (aiApiKey.isNotBlank()) {
+                    requestBuilder.addHeader("X-API-Key", aiApiKey)
+                }
                 when (provider) {
                     "openai_compatible" -> {
-                        val model   = runBlocking { prefs.customAiModel.first() }
-                        val baseUrl = runBlocking { prefs.customAiBaseUrl.first() }
-                        if (model.isNotBlank())   requestBuilder.addHeader("X-AI-Model", model)
-                        if (baseUrl.isNotBlank()) requestBuilder.addHeader("X-AI-Base-URL", baseUrl)
+                        if (snapshot.customAiModel.isNotBlank()) {
+                            requestBuilder.addHeader("X-AI-Model", snapshot.customAiModel)
+                        }
+                        if (snapshot.customAiBaseUrl.isNotBlank()) {
+                            requestBuilder.addHeader("X-AI-Base-URL", snapshot.customAiBaseUrl)
+                        }
                     }
                     "deepseek" -> {
-                        val model   = runBlocking { prefs.deepseekModel.first() }
-                        val baseUrl = runBlocking { prefs.deepseekBaseUrl.first() }
-                        if (model.isNotBlank())   requestBuilder.addHeader("X-AI-Model", model)
-                        if (baseUrl.isNotBlank()) requestBuilder.addHeader("X-AI-Base-URL", baseUrl)
+                        if (snapshot.deepseekModel.isNotBlank()) {
+                            requestBuilder.addHeader("X-AI-Model", snapshot.deepseekModel)
+                        }
+                        if (snapshot.deepseekBaseUrl.isNotBlank()) {
+                            requestBuilder.addHeader("X-AI-Base-URL", snapshot.deepseekBaseUrl)
+                        }
                     }
                 }
                 chain.proceed(requestBuilder.build())
             }
-            .addInterceptor(
-                HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BODY
-                }
-            )
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(
+                HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                }
+            )
+        }
+
+        return builder.build()
     }
 
     @Provides
     @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient, gson: Gson): Retrofit {
-        // Base URL is a placeholder; the dynamic URL interceptor rewrites it per request
         return Retrofit.Builder()
             .baseUrl("http://localhost/")
             .client(okHttpClient)

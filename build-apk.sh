@@ -3,7 +3,15 @@
 # Usage:  ./build-apk.sh [--release]
 set -euo pipefail
 
+if grep -qi microsoft /proc/version 2>/dev/null; then
+    LINUX_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+    if [[ -n "$LINUX_HOME" && "${HOME:-}" != "$LINUX_HOME" ]]; then
+        export HOME="$LINUX_HOME"
+    fi
+fi
+
 ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
+ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRADLEW="$SCRIPT_DIR/gradlew"
 
@@ -26,7 +34,14 @@ if ! java -version 2>&1 | grep -q 'version "17'; then
     export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
 fi
 export ANDROID_HOME
+export ANDROID_SDK_ROOT
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+LOCAL_PROPERTIES="$SCRIPT_DIR/local.properties"
+if [[ -d "$ANDROID_HOME" ]]; then
+    ESCAPED_SDK_DIR=$(printf '%s\n' "$ANDROID_HOME" | sed 's/[\\&]/\\&/g; s/\//\\\//g')
+    printf 'sdk.dir=%s\n' "$ESCAPED_SDK_DIR" > "$LOCAL_PROPERTIES"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECURITY CHECKS
@@ -74,9 +89,9 @@ fi
 info "Checking cleartext traffic setting..."
 if grep -q 'usesCleartextTraffic="true"' "$SRC/main/AndroidManifest.xml" 2>/dev/null; then
     if [[ "$BUILD_TYPE" == "release" ]]; then
-        fail "android:usesCleartextTraffic=\"true\" should not be set in a release build"
+        fail 'android:usesCleartextTraffic="true" should not be set in a release build'
     else
-        warn "android:usesCleartextTraffic=\"true\" (OK for local dev, disable before publishing)"
+        warn 'android:usesCleartextTraffic="true" (OK for local dev, disable before publishing)'
     fi
 else
     echo -e "  ${GREEN}✓${NC} Cleartext traffic disabled"
@@ -86,7 +101,7 @@ fi
 info "Checking HTTP logging interceptor..."
 if grep -rn 'Level.BODY\|BODY\|HttpLoggingInterceptor' "$SRC/main/java/" --include="*.kt" 2>/dev/null | grep -v '^\s*//' | grep -q '.'; then
     if [[ "$BUILD_TYPE" == "release" ]]; then
-        warn "HttpLoggingInterceptor with BODY logging found — strips only via ProGuard; consider guarding with BuildConfig.DEBUG"
+        warn 'HttpLoggingInterceptor with BODY logging found — strips only via ProGuard; consider guarding with BuildConfig.DEBUG'
     else
         echo -e "  ${GREEN}✓${NC} Logging interceptor present (debug build — expected)"
     fi
@@ -119,9 +134,11 @@ echo ""
 echo -e "${BOLD}── Building ($BUILD_TYPE) ────────────────────────────────────${NC}"
 
 GRADLE_TASK="assemble$(tr '[:lower:]' '[:upper:]' <<< "${BUILD_TYPE:0:1}")${BUILD_TYPE:1}"
-info "Running: ./gradlew $GRADLE_TASK"
+info "Running: ./gradlew clean $GRADLE_TASK --no-daemon"
 
-(cd "$SCRIPT_DIR" && "$GRADLEW" "$GRADLE_TASK" --stacktrace 2>&1)
+(cd "$SCRIPT_DIR" && "$GRADLEW" --stop >/dev/null 2>&1 || true)
+(cd "$SCRIPT_DIR" && rm -rf app/build/intermediates/classes app/build/intermediates/asm_instrumented_project_classes)
+(cd "$SCRIPT_DIR" && "$GRADLEW" clean "$GRADLE_TASK" --stacktrace --no-daemon 2>&1)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # REPORT
@@ -136,7 +153,6 @@ if [[ -n "$APK_FILE" ]]; then
     echo -e "  APK:  ${BOLD}$APK_FILE${NC}"
     echo -e "  Size: $APK_SIZE"
     echo ""
-    # Windows-accessible path for easy copy
     WSL_WIN_PATH=$(wslpath -w "$APK_FILE" 2>/dev/null || true)
     if [[ -n "$WSL_WIN_PATH" ]]; then
         printf "  Windows path: %s\n" "$WSL_WIN_PATH"

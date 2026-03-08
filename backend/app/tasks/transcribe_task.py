@@ -1,19 +1,20 @@
 """
-Celery task: transcribe audio using OpenAI Whisper API.
+Celery task: transcribe audio using local faster-whisper.
 """
 import asyncio
 import json
 import os
+from app.config import settings
 from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
 from app.models.episode import Episode, ProcessingJob, ProcessingStatus, Transcript
 from app.services.transcription.whisper_service import transcribe_audio
-from app.config import settings
+from app.tasks.helpers import update_processing_state
 
 
 @celery_app.task(bind=True, name="tasks.transcribe")
 def transcribe_task(self, job_id: str, episode_id: str, provider_config_dict: dict = None):
-    """Transcribe audio using Whisper API with chunking for long files."""
+    """Transcribe audio using faster-whisper with progress updates."""
     db = SessionLocal()
     try:
         job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
@@ -25,15 +26,14 @@ def transcribe_task(self, job_id: str, episode_id: str, provider_config_dict: di
         work_dir = os.path.join(settings.audio_tmp_dir, episode_id, "chunks")
         os.makedirs(work_dir, exist_ok=True)
 
-        total_chunks = [0]
-
         async def progress_cb(done, total):
-            total_chunks[0] = total
-            progress = 0.3 + (done / total) * 0.4  # 30%-70% range
-            step = f"正在转录第 {done}/{total} 段…"
-            if job:
-                job.progress = progress
-                job.current_step = step
+            if not job:
+                return
+            progress = 0.3 + (done / max(total, 1)) * 0.4
+            job.progress = progress
+            job.current_step = f"正在转录第 {done}/{total} 段…"
+            if episode:
+                episode.processing_status = ProcessingStatus.TRANSCRIBING
             db.commit()
 
         result = asyncio.run(
@@ -45,10 +45,9 @@ def transcribe_task(self, job_id: str, episode_id: str, provider_config_dict: di
             )
         )
 
-        # Store transcript
         segments_data = [
-            {"start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text}
-            for s in result.segments
+            {"start_ms": segment.start_ms, "end_ms": segment.end_ms, "text": segment.text}
+            for segment in result.segments
         ]
         transcript_obj = Transcript(
             episode_id=episode_id,
@@ -58,29 +57,32 @@ def transcribe_task(self, job_id: str, episode_id: str, provider_config_dict: di
             word_count=result.word_count,
         )
         db.merge(transcript_obj)
-        episode.duration_seconds = episode.duration_seconds or (result.segments[-1].end_ms // 1000 if result.segments else 0)
-
-        if job:
-            job.status = ProcessingStatus.SUMMARIZING
-            job.progress = 0.72
-            job.current_step = "正在生成摘要…"
+        episode.duration_seconds = episode.duration_seconds or (
+            result.segments[-1].end_ms // 1000 if result.segments else 0
+        )
         db.commit()
 
-        # Chain to summarize task
-        from app.tasks.summarize_task import summarize_task
-        summarize_task.delay(job_id, episode_id, provider_config_dict)
+        update_processing_state(db, job, episode, ProcessingStatus.SUMMARIZING, 0.72, "正在生成摘要…")
 
-    except Exception as e:
+        from app.tasks.summarize_task import summarize_task
+        async_result = summarize_task.delay(job_id, episode_id, provider_config_dict)
+        if job:
+            job.celery_task_id = async_result.id
+            db.commit()
+
+    except Exception as exc:
         db.rollback()
         job = db.query(ProcessingJob).filter(ProcessingJob.id == job_id).first()
         episode = db.query(Episode).filter(Episode.id == episode_id).first()
-        if job:
-            job.status = ProcessingStatus.FAILED
-            job.error_message = str(e)
-        if episode:
-            episode.processing_status = ProcessingStatus.FAILED
-            episode.error_message = str(e)
-        db.commit()
+        update_processing_state(
+            db,
+            job,
+            episode,
+            ProcessingStatus.FAILED,
+            job.progress if job else 0.0,
+            "转录失败",
+            str(exc),
+        )
         raise
     finally:
         db.close()

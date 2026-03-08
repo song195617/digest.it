@@ -18,7 +18,6 @@ import org.json.JSONObject
 import javax.inject.Inject
 
 data class SettingsState(
-    val openAiKey: String = "",
     val claudeKey: String = "",
     val backendUrl: String = "",
     val isSaving: Boolean = false,
@@ -47,45 +46,49 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             combine(
-                prefs.openAiApiKey, prefs.claudeApiKey, prefs.backendUrl,
-                prefs.aiProvider, prefs.geminiApiKey,
-            ) { openAi, claude, url, provider, gemini ->
-                listOf(openAi, claude, url, provider, gemini)
+                prefs.claudeApiKey,
+                prefs.backendUrl,
+                prefs.aiProvider,
+                prefs.geminiApiKey,
+            ) { claude, url, provider, gemini ->
+                listOf(claude, url, provider, gemini)
             }.combine(
                 combine(prefs.customAiBaseUrl, prefs.customAiModel, prefs.customAiApiKey) { a, b, c -> Triple(a, b, c) }
             ) { first, custom -> Pair(first, custom) }
-            .combine(
-                combine(prefs.deepseekApiKey, prefs.deepseekBaseUrl, prefs.deepseekModel) { a, b, c -> Triple(a, b, c) }
-            ) { (first, custom), ds ->
-                _state.update { it.copy(
-                    openAiKey       = first[0],
-                    claudeKey       = first[1],
-                    backendUrl      = first[2],
-                    aiProvider      = first[3],
-                    geminiApiKey    = first[4],
-                    customAiBaseUrl = custom.first,
-                    customAiModel   = custom.second,
-                    customAiApiKey  = custom.third,
-                    deepseekApiKey  = ds.first,
-                    deepseekBaseUrl = ds.second,
-                    deepseekModel   = ds.third,
-                ) }
-            }.collect {}
+                .combine(
+                    combine(prefs.deepseekApiKey, prefs.deepseekBaseUrl, prefs.deepseekModel) { a, b, c -> Triple(a, b, c) }
+                ) { (first, custom), ds ->
+                    _state.update {
+                        it.copy(
+                            claudeKey = first[0],
+                            backendUrl = first[1],
+                            aiProvider = first[2],
+                            geminiApiKey = first[3],
+                            customAiBaseUrl = custom.first,
+                            customAiModel = custom.second,
+                            customAiApiKey = custom.third,
+                            deepseekApiKey = ds.first,
+                            deepseekBaseUrl = ds.second,
+                            deepseekModel = ds.third,
+                        )
+                    }
+                }.collect {}
         }
     }
 
-    fun onOpenAiKeyChange(key: String)       { _state.update { it.copy(openAiKey = key) } }
-    fun onClaudeKeyChange(key: String)       { _state.update { it.copy(claudeKey = key) } }
-    fun onBackendUrlChange(url: String)      { _state.update { it.copy(backendUrl = url) } }
-    fun onAiProviderChange(p: String)        { _state.update { it.copy(aiProvider = p, availableModels = emptyList(), modelsError = null) } }
-    fun onGeminiApiKeyChange(key: String)    { _state.update { it.copy(geminiApiKey = key) } }
+    fun onClaudeKeyChange(key: String) { _state.update { it.copy(claudeKey = key) } }
+    fun onBackendUrlChange(url: String) { _state.update { it.copy(backendUrl = url) } }
+    fun onAiProviderChange(provider: String) {
+        _state.update { it.copy(aiProvider = provider, availableModels = emptyList(), modelsError = null) }
+    }
+    fun onGeminiApiKeyChange(key: String) { _state.update { it.copy(geminiApiKey = key) } }
     fun onCustomAiBaseUrlChange(url: String) { _state.update { it.copy(customAiBaseUrl = url) } }
     fun onCustomAiModelChange(model: String) { _state.update { it.copy(customAiModel = model) } }
-    fun onCustomAiApiKeyChange(key: String)  { _state.update { it.copy(customAiApiKey = key) } }
-    fun onDeepseekApiKeyChange(key: String)  { _state.update { it.copy(deepseekApiKey = key) } }
+    fun onCustomAiApiKeyChange(key: String) { _state.update { it.copy(customAiApiKey = key) } }
+    fun onDeepseekApiKeyChange(key: String) { _state.update { it.copy(deepseekApiKey = key) } }
     fun onDeepseekBaseUrlChange(url: String) { _state.update { it.copy(deepseekBaseUrl = url) } }
     fun onDeepseekModelChange(model: String) { _state.update { it.copy(deepseekModel = model) } }
-    fun onSavedSuccessConsumed()             { _state.update { it.copy(savedSuccess = false) } }
+    fun onSavedSuccessConsumed() { _state.update { it.copy(savedSuccess = false) } }
 
     fun resetDeepseekBaseUrl() {
         _state.update { it.copy(deepseekBaseUrl = UserPreferencesDataStore.DEEPSEEK_DEFAULT_URL) }
@@ -94,11 +97,14 @@ class SettingsViewModel @Inject constructor(
     fun fetchModels() {
         val s = _state.value
         val (baseUrl, apiKey) = when (s.aiProvider) {
-            "deepseek"          -> s.deepseekBaseUrl to s.deepseekApiKey
+            "deepseek" -> s.deepseekBaseUrl to s.deepseekApiKey
             "openai_compatible" -> s.customAiBaseUrl to s.customAiApiKey
-            else                -> return
+            else -> return
         }
-        if (apiKey.isBlank()) { _state.update { it.copy(modelsError = "请先填写 API Key") }; return }
+        if (apiKey.isBlank()) {
+            _state.update { it.copy(modelsError = "请先填写 API Key") }
+            return
+        }
         _state.update { it.copy(isLoadingModels = true, modelsError = null, availableModels = emptyList()) }
         viewModelScope.launch {
             runCatching {
@@ -112,7 +118,7 @@ class SettingsViewModel @Inject constructor(
                 }
             }.fold(
                 onSuccess = { models -> _state.update { it.copy(isLoadingModels = false, availableModels = models) } },
-                onFailure = { e    -> _state.update { it.copy(isLoadingModels = false, modelsError = e.message ?: "请求失败") } }
+                onFailure = { e -> _state.update { it.copy(isLoadingModels = false, modelsError = e.message ?: "请求失败") } }
             )
         }
     }
@@ -121,7 +127,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
             val s = _state.value
-            prefs.setOpenAiApiKey(s.openAiKey)
             prefs.setClaudeApiKey(s.claudeKey)
             prefs.setBackendUrl(s.backendUrl)
             prefs.setAiProvider(s.aiProvider)

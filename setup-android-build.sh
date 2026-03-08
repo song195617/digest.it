@@ -3,9 +3,17 @@
 # Run once on WSL2, then use build-apk.sh for every build.
 set -euo pipefail
 
+if grep -qi microsoft /proc/version 2>/dev/null; then
+    LINUX_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+    if [[ -n "$LINUX_HOME" && "${HOME:-}" != "$LINUX_HOME" ]]; then
+        export HOME="$LINUX_HOME"
+    fi
+fi
+
 ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
-GRADLE_VERSION="8.7"
-# AGP 8.5.2 requires Gradle 8.7+.
+ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+GRADLE_VERSION="8.13"
+# AGP 8.13 requires Gradle 8.13+.
 # Find the latest cmdline-tools URL at:
 #   https://developer.android.com/studio  → "Command line tools only"
 CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
@@ -24,7 +32,6 @@ else
     info "Installing OpenJDK 17..."
     sudo apt-get update -qq
     sudo apt-get install -y openjdk-17-jdk-headless unzip wget
-    # Point JAVA_HOME at 17 even if other versions are installed
     sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java 2>/dev/null || true
 fi
 export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
@@ -40,7 +47,6 @@ else
     TMP_ZIP="$(mktemp /tmp/cmdtools.XXXXXX.zip)"
     wget -q --show-progress -O "$TMP_ZIP" "$CMDLINE_TOOLS_URL"
     unzip -q "$TMP_ZIP" -d "$ANDROID_HOME/cmdline-tools"
-    # Google zips it as "cmdline-tools/"; rename to "latest"
     if [[ -d "$ANDROID_HOME/cmdline-tools/cmdline-tools" ]]; then
         mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$TOOLS_DIR"
     fi
@@ -48,6 +54,8 @@ else
     info "cmdline-tools installed at $TOOLS_DIR"
 fi
 
+export ANDROID_HOME
+export ANDROID_SDK_ROOT
 export PATH="$TOOLS_DIR/bin:$ANDROID_HOME/platform-tools:$PATH"
 
 # ── 3. SDK packages ───────────────────────────────────────────────────────────
@@ -81,21 +89,24 @@ else
     info "Gradle $GRADLE_VERSION already present."
 fi
 
-# Write a thin gradlew that delegates to the local Gradle binary.
-# This avoids the gradle-wrapper.jar requirement and the URL verification step.
 if [[ ! -f "$GRADLEW" ]]; then
     mkdir -p "$SCRIPT_DIR/gradle/wrapper"
-    cat > "$GRADLEW" <<'GRADLEW_SCRIPT'
+    cat > "$GRADLEW" <<GRADLEW_SCRIPT
 #!/usr/bin/env bash
-GRADLE_BIN="${GRADLE_BIN:-$HOME/.local/gradle-8.7/bin/gradle}"
-if [[ ! -x "$GRADLE_BIN" ]]; then
-    echo "ERROR: Gradle not found at $GRADLE_BIN. Run: bash setup-android-build.sh"
+if grep -qi microsoft /proc/version 2>/dev/null; then
+    LINUX_HOME="4(getent passwd "4(id -un)" | cut -d: -f6)"
+    if [[ -n "4LINUX_HOME" && "4{HOME:-}" != "4LINUX_HOME" ]]; then
+        export HOME="4LINUX_HOME"
+    fi
+fi
+GRADLE_BIN="4{GRADLE_BIN:-4HOME/.local/gradle-${GRADLE_VERSION}/bin/gradle}"
+if [[ ! -x "4GRADLE_BIN" ]]; then
+    echo "ERROR: Gradle not found at 4GRADLE_BIN. Run: bash setup-android-build.sh"
     exit 1
 fi
-exec "$GRADLE_BIN" "$@"
+exec "4GRADLE_BIN" "4@"
 GRADLEW_SCRIPT
     chmod +x "$GRADLEW"
-    # Write properties file for IDE compatibility
     cat > "$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.properties" <<PROPS
 distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
@@ -110,7 +121,6 @@ else
     info "gradlew already present."
 fi
 
-# ── 5. Persist env vars in ~/.bashrc ──────────────────────────────────────────
 MARKER="# digest.it android sdk"
 if ! grep -q "$MARKER" ~/.bashrc 2>/dev/null; then
     info "Adding SDK env vars to ~/.bashrc..."
@@ -118,15 +128,15 @@ if ! grep -q "$MARKER" ~/.bashrc 2>/dev/null; then
 
 $MARKER
 export ANDROID_HOME="$ANDROID_HOME"
+export ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT"
 export JAVA_HOME="$JAVA_HOME"
 export PATH="\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$PATH"
 BASHRC
     info "Reload your shell or run:  source ~/.bashrc"
 fi
 
-# ── 6. Smoke-test ─────────────────────────────────────────────────────────────
 info "Verifying setup..."
-ANDROID_HOME="$ANDROID_HOME" JAVA_HOME="$JAVA_HOME" \
+ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" JAVA_HOME="$JAVA_HOME" \
     "$GRADLEW" --version --project-dir "$SCRIPT_DIR" --quiet 2>&1 | head -4
 
 echo ""

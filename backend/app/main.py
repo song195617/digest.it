@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
+from app.config import settings
 from app.core.database import init_db
 
 app = FastAPI(
@@ -11,7 +12,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -24,7 +25,7 @@ async def startup():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "origins": settings.cors_allowed_origins}
 
 
 app.include_router(api_router)

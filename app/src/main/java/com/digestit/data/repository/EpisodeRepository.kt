@@ -26,7 +26,8 @@ class EpisodeRepository @Inject constructor(
         try {
             val remoteEpisodes = api.getEpisodes()
             remoteEpisodes.forEach { episodeDao.insertEpisode(EpisodeEntity.fromDomain(it.toDomain())) }
-        } catch (ignored: Exception) {}
+        } catch (_: Exception) {
+        }
     }
 
     override suspend fun getEpisode(episodeId: String): Episode? {
@@ -34,39 +35,43 @@ class EpisodeRepository @Inject constructor(
             val remote = api.getEpisode(episodeId).toDomain()
             episodeDao.insertEpisode(EpisodeEntity.fromDomain(remote))
             remote
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             episodeDao.getEpisode(episodeId)?.toDomain()
         }
     }
 
     override suspend fun submitUrl(url: String): ProcessingJob {
         val response = api.submitUrl(SubmitUrlRequest(url))
+        response.episodeId?.let { episodeId ->
+            try {
+                val episode = api.getEpisode(episodeId).toDomain()
+                episodeDao.insertEpisode(EpisodeEntity.fromDomain(episode))
+            } catch (_: Exception) {
+            }
+        }
         return response.toDomain()
     }
 
     override suspend fun getJobStatus(jobId: String): ProcessingJob {
         val response = api.getJobStatus(jobId)
-        // If job is done, refresh the episode in local DB
-        if (response.episodeId != null &&
-            (response.status == "COMPLETED" || response.status == "FAILED")) {
+        response.episodeId?.let { episodeId ->
             try {
-                val episode = api.getEpisode(response.episodeId).toDomain()
+                val episode = api.getEpisode(episodeId).toDomain()
                 episodeDao.insertEpisode(EpisodeEntity.fromDomain(episode))
-            } catch (ignored: Exception) {}
+            } catch (_: Exception) {
+            }
         }
         return response.toDomain()
     }
 
     override suspend fun getTranscript(episodeId: String): Transcript? {
-        // Try local cache first
         val cached = episodeDao.getTranscript(episodeId)
         if (cached != null) return cached.toDomain()
-        // Fetch from remote and cache
         return try {
             val remote = api.getTranscript(episodeId).toDomain()
             episodeDao.insertTranscript(TranscriptEntity.fromDomain(remote))
             remote
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -74,7 +79,7 @@ class EpisodeRepository @Inject constructor(
     override suspend fun getSummary(episodeId: String): Summary? {
         return try {
             api.getSummary(episodeId).toDomain()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }

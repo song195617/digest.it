@@ -2,14 +2,15 @@
 Chat endpoint: WebSocket for streaming AI responses.
 """
 import json
+import re
 import uuid
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Header
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.core.database import get_db
-from app.models.episode import Episode, Transcript, Summary, ChatMessage
+from app.models.episode import Episode, Transcript, ChatMessage
 from app.services.ai.factory import get_ai_service
 from app.services.ai.provider_config import ProviderConfig
-from app.config import settings
 
 router = APIRouter(prefix="/v1/ws", tags=["chat"])
 
@@ -52,18 +53,13 @@ async def chat_websocket(
                 await websocket.send_json({"error": "Episode or transcript not found"})
                 continue
 
-            # Resolve session id
             resolved_session = session_id if session_id != "new" else str(uuid.uuid4())
-
-            # Load chat history
             history = db.query(ChatMessage).filter(
                 ChatMessage.episode_id == episode_id,
                 ChatMessage.session_id == resolved_session,
             ).order_by(ChatMessage.created_at).all()
+            history_dicts = [{"role": message.role, "content": message.content} for message in history]
 
-            history_dicts = [{"role": m.role, "content": m.content} for m in history]
-
-            # Save user message
             user_msg = ChatMessage(
                 id=str(uuid.uuid4()),
                 session_id=resolved_session,
@@ -74,7 +70,6 @@ async def chat_websocket(
             db.add(user_msg)
             db.commit()
 
-            # Stream assistant response
             segments = json.loads(transcript.segments_json) if transcript.segments_json else []
             full_response = ""
 
@@ -87,22 +82,24 @@ async def chat_websocket(
                 user_message=user_message,
             ):
                 full_response += delta
-                await websocket.send_json({
-                    "delta": delta,
-                    "done": False,
+                await websocket.send_json(
+                    {
+                        "delta": delta,
+                        "done": False,
+                        "session_id": resolved_session,
+                        "referenced_timestamps": [],
+                    }
+                )
+
+            await websocket.send_json(
+                {
+                    "delta": "",
+                    "done": True,
                     "session_id": resolved_session,
-                    "referenced_timestamps": [],
-                })
+                    "referenced_timestamps": _extract_timestamps(full_response),
+                }
+            )
 
-            # Send done signal
-            await websocket.send_json({
-                "delta": "",
-                "done": True,
-                "session_id": resolved_session,
-                "referenced_timestamps": _extract_timestamps(full_response),
-            })
-
-            # Save assistant message
             assistant_msg = ChatMessage(
                 id=str(uuid.uuid4()),
                 session_id=resolved_session,
@@ -115,19 +112,25 @@ async def chat_websocket(
 
     except WebSocketDisconnect:
         pass
-    except Exception as e:
+    except Exception as exc:
         try:
-            await websocket.send_json({"error": str(e), "done": True})
+            await websocket.send_json({"error": str(exc), "done": True})
         except Exception:
             pass
 
 
 def _extract_timestamps(text: str) -> list[int]:
-    """Extract [MM:SS] timestamps mentioned in the response."""
-    import re
-    pattern = re.compile(r"\[(\d{2}):(\d{2})\]")
+    """Extract [MM:SS] or [HH:MM:SS] timestamps mentioned in the response."""
+    pattern = re.compile(r"\[(?:(\d{2}):(\d{2}):(\d{2})|(\d{2}):(\d{2}))\]")
     result = []
-    for m in pattern.finditer(text):
-        mins, secs = int(m.group(1)), int(m.group(2))
-        result.append((mins * 60 + secs) * 1000)
+    for match in pattern.finditer(text):
+        if match.group(1) is not None:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            seconds = int(match.group(3))
+        else:
+            hours = 0
+            minutes = int(match.group(4))
+            seconds = int(match.group(5))
+        result.append(((hours * 3600) + (minutes * 60) + seconds) * 1000)
     return result

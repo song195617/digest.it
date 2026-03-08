@@ -1,20 +1,54 @@
 package com.digestit.ui.home
 
 import androidx.compose.foundation.background
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.digestit.domain.model.Episode
-import com.digestit.domain.model.Platform
 import com.digestit.domain.model.ProcessingStatus
 import com.digestit.ui.theme.platformColor
 
@@ -39,11 +72,13 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val effect by viewModel.effects.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
     var showUrlDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(effect) {
         when (val e = effect) {
             is HomeEffect.NavigateToProcessing -> {
+                showUrlDialog = false
                 onNavigateToProcessing(e.jobId)
                 viewModel.onEffectConsumed()
             }
@@ -51,7 +86,11 @@ fun HomeScreen(
                 onNavigateToSummary(e.episodeId)
                 viewModel.onEffectConsumed()
             }
-            else -> {}
+            is HomeEffect.ShowError -> {
+                snackbarHostState.showSnackbar(e.message)
+                viewModel.onEffectConsumed()
+            }
+            null -> Unit
         }
     }
 
@@ -70,7 +109,8 @@ fun HomeScreen(
             FloatingActionButton(onClick = { showUrlDialog = true }) {
                 Icon(Icons.Default.Add, contentDescription = "添加链接")
             }
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Box(modifier = Modifier.padding(paddingValues)) {
             if (state.episodes.isEmpty()) {
@@ -83,7 +123,9 @@ fun HomeScreen(
                                 if (value == SwipeToDismissBoxValue.EndToStart) {
                                     viewModel.deleteEpisode(episode.id)
                                     true
-                                } else false
+                                } else {
+                                    false
+                                }
                             }
                         )
                         SwipeToDismissBox(
@@ -119,15 +161,15 @@ fun HomeScreen(
             isSubmitting = state.isSubmitting,
             error = state.error,
             onUrlChange = viewModel::onUrlInputChange,
-            onSubmit = { viewModel.onSubmitUrl(); showUrlDialog = false },
-            onDismiss = { showUrlDialog = false }
+            onSubmit = viewModel::onSubmitUrl,
+            onDismiss = { if (!state.isSubmitting) showUrlDialog = false }
         )
     }
 }
 
 @Composable
 private fun EpisodeCard(episode: Episode, onClick: () -> Unit) {
-    val platformColor = platformColor[episode.platform.name] ?: Color.Gray
+    val itemPlatformColor = platformColor[episode.platform.name] ?: Color.Gray
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -144,13 +186,13 @@ private fun EpisodeCard(episode: Episode, onClick: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        color = platformColor.copy(alpha = 0.15f),
+                        color = itemPlatformColor.copy(alpha = 0.15f),
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             episode.platform.displayName,
                             style = MaterialTheme.typography.labelSmall,
-                            color = platformColor,
+                            color = itemPlatformColor,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -188,8 +230,12 @@ private fun StatusChip(status: ProcessingStatus) {
         ProcessingStatus.QUEUED -> "等待中" to Color.Gray
     }
     Surface(color = color.copy(alpha = 0.15f), shape = RoundedCornerShape(4.dp)) {
-        Text(text, style = MaterialTheme.typography.labelSmall, color = color,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
     }
 }
 
@@ -233,12 +279,15 @@ private fun AddUrlDialog(
         },
         confirmButton = {
             Button(onClick = onSubmit, enabled = !isSubmitting && urlInput.isNotBlank()) {
-                if (isSubmitting) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                else Text("开始处理")
+                if (isSubmitting) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("开始处理")
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) { Text("取消") }
         }
     )
 }

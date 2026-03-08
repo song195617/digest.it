@@ -5,18 +5,25 @@ Strategy:
 1. Check for AI-generated subtitles via Bilibili player API (free, no transcription cost)
 2. If no subtitles: extract audio stream via yt-dlp for Whisper transcription
 """
-import json
 import re
-import httpx
-import yt_dlp
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
+
+import httpx
+
+
+@dataclass
+class BilibiliSubtitleSegment:
+    start_ms: int
+    end_ms: int
+    text: str
 
 
 @dataclass
 class BilibiliSubtitle:
     text: str
     language: str
+    segments: list[BilibiliSubtitleSegment]
 
 
 @dataclass
@@ -25,7 +32,7 @@ class ExtractedContent:
     author: str
     cover_url: str | None
     duration_seconds: int
-    subtitle: BilibiliSubtitle | None = None  # If available, skip audio transcription
+    subtitle: BilibiliSubtitle | None = None
     audio_local_path: str | None = None
 
 
@@ -33,10 +40,7 @@ async def extract_bilibili(url: str, output_dir: str) -> ExtractedContent:
     """Extract content from Bilibili URL. Prefer subtitles over audio transcription."""
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Step 1: Get basic video info and check for subtitles
     video_info = await _get_video_info(url)
-
-    # Step 2: Try to get AI-generated subtitle (saves transcription cost)
     subtitle = await _get_subtitle(video_info.get("bvid", ""), video_info.get("cid", ""))
 
     if subtitle:
@@ -49,7 +53,6 @@ async def extract_bilibili(url: str, output_dir: str) -> ExtractedContent:
             audio_local_path=None,
         )
 
-    # Step 3: No subtitle available - extract audio for Whisper transcription
     audio_path = await _extract_audio_ytdlp(url, output_dir)
     return ExtractedContent(
         title=video_info.get("title", ""),
@@ -96,37 +99,40 @@ async def _get_subtitle(bvid: str, cid: str) -> BilibiliSubtitle | None:
             resp = await client.get(subtitle_api, headers=headers)
             data = resp.json()
 
-        subtitle_list = (
-            data.get("data", {})
-            .get("subtitle", {})
-            .get("subtitles", [])
-        )
+        subtitle_list = data.get("data", {}).get("subtitle", {}).get("subtitles", [])
         if not subtitle_list:
             return None
 
-        # Prefer AI-generated Chinese subtitle
         ai_sub = next(
-            (s for s in subtitle_list if "ai" in s.get("lan", "").lower()
-             or "zh" in s.get("lan", "").lower()),
-            subtitle_list[0] if subtitle_list else None,
+            (
+                subtitle for subtitle in subtitle_list
+                if "ai" in subtitle.get("lan", "").lower() or "zh" in subtitle.get("lan", "").lower()
+            ),
+            subtitle_list[0],
         )
-        if not ai_sub:
-            return None
-
         subtitle_url = "https:" + ai_sub["subtitle_url"]
         async with httpx.AsyncClient(timeout=15) as client:
             sub_resp = await client.get(subtitle_url, headers=headers)
             sub_data = sub_resp.json()
 
         body = sub_data.get("body", [])
-        full_text = "\n".join(item.get("content", "") for item in body)
-        return BilibiliSubtitle(text=full_text, language=ai_sub.get("lan", "zh"))
+        segments = parse_subtitle_segments(body)
+        full_text = "\n".join(segment.text for segment in segments) if segments else "\n".join(
+            item.get("content", "").strip() for item in body if item.get("content", "").strip()
+        )
+        return BilibiliSubtitle(
+            text=full_text,
+            language=ai_sub.get("lan", "zh"),
+            segments=segments,
+        )
     except Exception:
         return None
 
 
 async def _extract_audio_ytdlp(url: str, output_dir: str) -> str:
     """Download audio stream from Bilibili using yt-dlp."""
+    import yt_dlp
+
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": f"{output_dir}/%(id)s.%(ext)s",
@@ -139,6 +145,25 @@ async def _extract_audio_ytdlp(url: str, output_dir: str) -> str:
         return ydl.prepare_filename(info)
 
 
+def parse_subtitle_segments(body: list[dict]) -> list[BilibiliSubtitleSegment]:
+    segments: list[BilibiliSubtitleSegment] = []
+    for item in body:
+        text = (item.get("content") or "").strip()
+        if not text:
+            continue
+        start_raw = item.get("from", item.get("start", 0))
+        end_raw = item.get("to", item.get("end", start_raw))
+        try:
+            start_ms = int(float(start_raw) * 1000)
+            end_ms = int(float(end_raw) * 1000)
+        except (TypeError, ValueError):
+            continue
+        if end_ms < start_ms:
+            end_ms = start_ms
+        segments.append(BilibiliSubtitleSegment(start_ms=start_ms, end_ms=end_ms, text=text))
+    return segments
+
+
 def _extract_bvid(url: str) -> str | None:
-    m = re.search(r"(BV[\w]+)", url)
-    return m.group(1) if m else None
+    match = re.search(r"(BV[\w]+)", url)
+    return match.group(1) if match else None

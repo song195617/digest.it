@@ -10,15 +10,14 @@
 
     <application
         android:name=".DigestItApplication"
-        android:allowBackup="true"
+        android:allowBackup="${allowBackup}"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DigestIt"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="${usesCleartextTraffic}">
 
-        <!-- Main entry Activity -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -29,7 +28,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Share receiver Activity - receives shared URLs from Bilibili / 小宇宙 apps -->
         <activity
             android:name=".ui.share.ShareActivity"
             android:exported="true"
@@ -42,12 +40,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Disable WorkManager's default auto-init via App Startup.
-             DigestItApplication implements Configuration.Provider and uses
-             HiltWorkerFactory. If the default initializer runs first (before
-             Hilt injects workerFactory), workerFactory is null → NPE crash.
-             Setting tools:node="remove" makes WorkManager use lazy init via
-             Configuration.Provider instead. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
@@ -59,23 +51,15 @@
                 tools:node="remove" />
         </provider>
 
-        <!-- Crash reporter: shows stack trace on screen when app crashes -->
         <activity
             android:name=".CrashActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Material.Light" />
 
-        <!-- WorkManager's internal foreground service — must declare type for Android 14+ -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
-
-        <!-- Foreground service for long-running transcription jobs -->
-        <service
-            android:name=".worker.TranscriptionForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
 
     </application>
 
