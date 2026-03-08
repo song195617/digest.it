@@ -5,8 +5,10 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,21 +46,21 @@ class SecurePreferencesStore @Inject constructor(
     val customAiApiKey: StateFlow<String> = customAiApiKeyState
     val deepseekApiKey: StateFlow<String> = deepseekApiKeyState
 
-    fun setClaudeApiKey(value: String) = writeString(KEY_CLAUDE_API_KEY, value, claudeApiKeyState)
+    suspend fun setClaudeApiKey(value: String) = writeString(KEY_CLAUDE_API_KEY, value, claudeApiKeyState)
 
-    fun setGeminiApiKey(value: String) = writeString(KEY_GEMINI_API_KEY, value, geminiApiKeyState)
+    suspend fun setGeminiApiKey(value: String) = writeString(KEY_GEMINI_API_KEY, value, geminiApiKeyState)
 
-    fun setCustomAiApiKey(value: String) = writeString(KEY_CUSTOM_AI_API_KEY, value, customAiApiKeyState)
+    suspend fun setCustomAiApiKey(value: String) = writeString(KEY_CUSTOM_AI_API_KEY, value, customAiApiKeyState)
 
-    fun setDeepseekApiKey(value: String) = writeString(KEY_DEEPSEEK_API_KEY, value, deepseekApiKeyState)
+    suspend fun setDeepseekApiKey(value: String) = writeString(KEY_DEEPSEEK_API_KEY, value, deepseekApiKeyState)
 
     private fun readString(key: String): String = prefs.getString(key, "") ?: ""
 
-    private fun writeString(
+    private suspend fun writeString(
         key: String,
         value: String,
         state: MutableStateFlow<String>
-    ) {
+    ) = withContext(Dispatchers.IO) {
         prefs.edit().putString(key, value).apply()
         state.value = value
     }

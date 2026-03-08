@@ -58,7 +58,7 @@ class ChatWebSocketManager @Inject constructor(
                 val error = payload.get("error")?.takeUnless { it.isJsonNull }?.asString
                 if (!error.isNullOrBlank()) {
                     close(IOException(error))
-                    webSocket.close(1000, "Error")
+                    webSocket.close(1011, "Server error")
                     return
                 }
 

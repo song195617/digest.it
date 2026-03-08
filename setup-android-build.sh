@@ -94,17 +94,17 @@ if [[ ! -f "$GRADLEW" ]]; then
     cat > "$GRADLEW" <<GRADLEW_SCRIPT
 #!/usr/bin/env bash
 if grep -qi microsoft /proc/version 2>/dev/null; then
-    LINUX_HOME="4(getent passwd "4(id -un)" | cut -d: -f6)"
-    if [[ -n "4LINUX_HOME" && "4{HOME:-}" != "4LINUX_HOME" ]]; then
-        export HOME="4LINUX_HOME"
+    LINUX_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+    if [[ -n "$LINUX_HOME" && "${HOME:-}" != "$LINUX_HOME" ]]; then
+        export HOME="$LINUX_HOME"
     fi
 fi
-GRADLE_BIN="4{GRADLE_BIN:-4HOME/.local/gradle-${GRADLE_VERSION}/bin/gradle}"
-if [[ ! -x "4GRADLE_BIN" ]]; then
-    echo "ERROR: Gradle not found at 4GRADLE_BIN. Run: bash setup-android-build.sh"
+GRADLE_BIN="${GRADLE_BIN:-$HOME/.local/gradle-${GRADLE_VERSION}/bin/gradle}"
+if [[ ! -x "$GRADLE_BIN" ]]; then
+    echo "ERROR: Gradle not found at $GRADLE_BIN. Run: bash setup-android-build.sh"
     exit 1
 fi
-exec "4GRADLE_BIN" "4@"
+exec "$GRADLE_BIN" "$@"
 GRADLEW_SCRIPT
     chmod +x "$GRADLEW"
     cat > "$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.properties" <<PROPS

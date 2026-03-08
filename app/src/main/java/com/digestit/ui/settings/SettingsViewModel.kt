@@ -124,7 +124,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun save() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isSaving = true) }
             val s = _state.value
             prefs.setClaudeApiKey(s.claudeKey)
