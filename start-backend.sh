@@ -42,11 +42,12 @@ start_redis() {
 setup_cuda() {
     source "$BACKEND/.venv/bin/activate"
     export LD_LIBRARY_PATH=$(python -c "
-import os
+import importlib.util
 try:
-    import nvidia.cublas.lib as c, nvidia.cudnn.lib as d
-    print(os.path.dirname(c.__file__) + ':' + os.path.dirname(d.__file__))
-except ImportError:
+    sc = importlib.util.find_spec('nvidia.cublas.lib')
+    sd = importlib.util.find_spec('nvidia.cudnn.lib')
+    print(list(sc.submodule_search_locations)[0] + ':' + list(sd.submodule_search_locations)[0])
+except Exception:
     print('')
 " 2>/dev/null)
     if [[ -n "$LD_LIBRARY_PATH" ]]; then
