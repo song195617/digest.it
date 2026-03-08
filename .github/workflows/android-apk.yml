@@ -69,7 +69,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/apk-') && github.ref_name || format('test-build-{0}', github.run_number) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/apk-') && github.ref_name || format('digest.it test build #{0}', github.run_number) }}
+          name: "${{ startsWith(github.ref, 'refs/tags/apk-') && github.ref_name || format('digest.it test build run {0}', github.run_number) }}"
           target_commitish: ${{ github.sha }}
           prerelease: true
           files: dist/*.apk
