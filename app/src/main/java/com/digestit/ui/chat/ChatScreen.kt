@@ -56,6 +56,7 @@ import com.digestit.domain.model.ChatSessionInfo
 import com.digestit.domain.model.MessageRole
 import com.digestit.ui.common.formatDateTime
 import com.digestit.ui.common.formatTimestamp
+import com.mikepenz.markdown.m3.Markdown
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -275,26 +276,35 @@ private fun ChatBubble(
                 bottomStart = if (isUser) 16.dp else 4.dp,
                 bottomEnd = if (isUser) 4.dp else 16.dp
             ),
-            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.widthIn(max = 300.dp)
+            color = if (isUser) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = if (isUser) Modifier.widthIn(max = 280.dp)
+                       else Modifier.fillMaxWidth(0.92f)
         ) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    message.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (isUser) {
+                    Text(
+                        message.content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                } else {
+                    Markdown(message.content)
+                }
                 if (message.isStreaming) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (isUser) {
-                        SuggestionChip(onClick = onRetryQuestion, label = { Text("再问一次") })
-                    } else {
+                        SuggestionChip(
+                            onClick = onRetryQuestion,
+                            label = { Text("再问一次", style = MaterialTheme.typography.labelSmall) }
+                        )
+                    } else if (!message.isStreaming) {
                         SuggestionChip(
                             onClick = onCopy,
-                            label = { Text("复制回答") },
-                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                            label = { Text("复制", style = MaterialTheme.typography.labelSmall) },
+                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                     }
                 }
