@@ -1,12 +1,26 @@
 package com.digestit.ui.summary
 
-import androidx.compose.foundation.layout.*
+import android.content.Intent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -28,6 +42,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -39,13 +56,62 @@ import com.digestit.ui.common.formatTimestamp
 fun SummaryScreen(
     episodeId: String,
     viewModel: SummaryViewModel = hiltViewModel(),
-    onNavigateToTranscript: () -> Unit,
+    onNavigateToTranscript: (Long?) -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
 
     LaunchedEffect(episodeId) { viewModel.load(episodeId) }
+
+    fun shareText(text: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, "分享摘要"))
+    }
+
+    fun buildPlainText(summaryText: com.digestit.domain.model.Summary): String {
+        return buildString {
+            appendLine(state.episode?.title ?: "digest.it 摘要")
+            appendLine(state.episode?.author.orEmpty())
+            appendLine()
+            appendLine(summaryText.oneLiner)
+            appendLine()
+            appendLine(summaryText.fullSummary)
+            if (summaryText.highlights.isNotEmpty()) {
+                appendLine()
+                appendLine("精彩片段")
+                summaryText.highlights.forEach { highlight ->
+                    appendLine("- ${formatTimestamp(highlight.timestampMs)} ${highlight.quote}")
+                }
+            }
+        }.trim()
+    }
+
+    fun buildMarkdown(summaryText: com.digestit.domain.model.Summary): String {
+        return buildString {
+            appendLine("# ${state.episode?.title ?: "digest.it 摘要"}")
+            if (!state.episode?.author.isNullOrBlank()) {
+                appendLine("- 作者: ${state.episode?.author}")
+            }
+            appendLine()
+            appendLine("> ${summaryText.oneLiner}")
+            appendLine()
+            appendLine("## 详细摘要")
+            appendLine(summaryText.fullSummary)
+            if (summaryText.highlights.isNotEmpty()) {
+                appendLine()
+                appendLine("## 精彩片段")
+                summaryText.highlights.forEach { highlight ->
+                    appendLine("- **${formatTimestamp(highlight.timestampMs)}** ${highlight.quote}")
+                }
+            }
+        }.trim()
+    }
 
     Scaffold(
         topBar = {
@@ -57,7 +123,7 @@ fun SummaryScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToTranscript) {
+                    IconButton(onClick = { onNavigateToTranscript(null) }) {
                         Icon(Icons.Default.Description, contentDescription = "查看全文")
                     }
                 }
@@ -73,7 +139,7 @@ fun SummaryScreen(
                         onClick = onNavigateToChat,
                         modifier = Modifier.padding(end = 16.dp)
                     ) {
-                        Icon(Icons.Default.Chat, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("AI 对话")
                     }
@@ -91,7 +157,7 @@ fun SummaryScreen(
         val summary = state.summary
         if (summary == null) {
             Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text("摘要尚未生成", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(state.error ?: "摘要尚未生成", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             return@Scaffold
         }
@@ -101,11 +167,39 @@ fun SummaryScreen(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    summary.oneLiner,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp)
-                )
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        summary.oneLiner,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SuggestionChip(
+                            onClick = { clipboard.setText(AnnotatedString(summary.oneLiner)) },
+                            label = { Text("复制一句话") },
+                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                        )
+                        SuggestionChip(
+                            onClick = { clipboard.setText(AnnotatedString(summary.fullSummary)) },
+                            label = { Text("复制完整摘要") },
+                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                        )
+                        SuggestionChip(
+                            onClick = { clipboard.setText(AnnotatedString(buildPlainText(summary))) },
+                            label = { Text("复制纯文本") },
+                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                        )
+                        SuggestionChip(
+                            onClick = { clipboard.setText(AnnotatedString(buildMarkdown(summary))) },
+                            label = { Text("复制 Markdown") },
+                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                        )
+                        SuggestionChip(
+                            onClick = { shareText(buildPlainText(summary)) },
+                            label = { Text("分享摘要") },
+                            icon = { Icon(Icons.Default.Share, contentDescription = null) }
+                        )
+                    }
+                }
             }
 
             TabRow(selectedTabIndex = state.selectedTab.ordinal) {
@@ -129,7 +223,20 @@ fun SummaryScreen(
             when (state.selectedTab) {
                 SummaryTab.KEY_POINTS -> KeyPointsList(summary.keyPoints)
                 SummaryTab.FULL_SUMMARY -> FullSummaryContent(summary.fullSummary)
-                SummaryTab.HIGHLIGHTS -> HighlightsList(summary.highlights)
+                SummaryTab.HIGHLIGHTS -> HighlightsList(
+                    highlights = summary.highlights,
+                    onTimestampClick = onNavigateToTranscript,
+                    onShareHighlight = { highlight ->
+                        shareText(buildString {
+                            appendLine(state.episode?.title ?: "digest.it")
+                            appendLine("${formatTimestamp(highlight.timestampMs)} ${highlight.quote}")
+                            if (highlight.context.isNotBlank()) {
+                                appendLine()
+                                append(highlight.context)
+                            }
+                        })
+                    }
+                )
             }
         }
     }
@@ -174,15 +281,26 @@ private fun FullSummaryContent(fullSummary: String) {
 }
 
 @Composable
-private fun HighlightsList(highlights: List<Highlight>) {
+private fun HighlightsList(
+    highlights: List<Highlight>,
+    onTimestampClick: (Long) -> Unit,
+    onShareHighlight: (Highlight) -> Unit,
+) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         itemsIndexed(highlights) { _, highlight ->
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(formatTimestamp(highlight.timestampMs)) }
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SuggestionChip(
+                            onClick = { onTimestampClick(highlight.timestampMs) },
+                            label = { Text(formatTimestamp(highlight.timestampMs)) }
+                        )
+                        SuggestionChip(
+                            onClick = { onShareHighlight(highlight) },
+                            label = { Text("分享片段") },
+                            icon = { Icon(Icons.Default.Share, contentDescription = null) }
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "\"${highlight.quote}\"",

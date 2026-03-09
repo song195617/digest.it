@@ -1,6 +1,6 @@
 """
 Local faster-whisper transcription service.
-Runs entirely on the backend server — no API key or upload required.
+Runs entirely on the backend server - no API key or upload required.
 """
 import asyncio
 import logging
@@ -43,6 +43,43 @@ def _get_model() -> WhisperModel:
             _model_config = (settings.whisper_model, "cpu", "int8")
 
     return _model
+
+
+def get_runtime_config(probe: bool = False) -> dict[str, object]:
+    """Return configured and active runtime settings for diagnostics."""
+    active_model = settings.whisper_model
+    active_device = settings.whisper_device
+    active_compute_type = settings.whisper_compute_type
+    initialized = _model_config is not None
+    fallback = False
+    error_message: str | None = None
+
+    if probe:
+        try:
+            _get_model()
+        except Exception as exc:
+            error_message = str(exc)
+
+    if _model_config is not None:
+        active_model, active_device, active_compute_type = _model_config
+        initialized = True
+        fallback = (
+            active_device != settings.whisper_device
+            or active_compute_type != settings.whisper_compute_type
+        )
+
+    return {
+        "model": active_model,
+        "configured_model": settings.whisper_model,
+        "configured_device": settings.whisper_device,
+        "configured_compute_type": settings.whisper_compute_type,
+        "active_device": active_device,
+        "active_compute_type": active_compute_type,
+        "mode": f"{active_device}/{active_compute_type}",
+        "initialized": initialized,
+        "fallback": fallback,
+        "error_message": error_message,
+    }
 
 
 @dataclass

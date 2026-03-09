@@ -1,6 +1,16 @@
 package com.digestit.data.remote.dto
 
-import com.digestit.domain.model.*
+import com.digestit.domain.model.BackendComponentHealth
+import com.digestit.domain.model.BackendHealth
+import com.digestit.domain.model.BackendWhisperHealth
+import com.digestit.domain.model.Episode
+import com.digestit.domain.model.Highlight
+import com.digestit.domain.model.Platform
+import com.digestit.domain.model.ProcessingJob
+import com.digestit.domain.model.ProcessingStatus
+import com.digestit.domain.model.Summary
+import com.digestit.domain.model.Transcript
+import com.digestit.domain.model.TranscriptSegment
 import com.google.gson.annotations.SerializedName
 import java.time.Instant
 
@@ -93,6 +103,51 @@ data class SummaryResponse(
         topics = topics,
         highlights = highlights.map { Highlight(it.quote, it.timestampMs, it.context) },
         fullSummary = fullSummary
+    )
+}
+
+data class ComponentHealthResponse(
+    val status: String,
+    val detail: String?
+) {
+    fun toDomain() = BackendComponentHealth(status = status, detail = detail)
+}
+
+data class WhisperHealthResponse(
+    val status: String,
+    val mode: String,
+    val model: String,
+    @SerializedName("configured_mode") val configuredMode: String,
+    val initialized: Boolean,
+    val fallback: Boolean,
+    @SerializedName("error_message") val errorMessage: String?
+) {
+    fun toDomain() = BackendWhisperHealth(
+        status = status,
+        mode = mode,
+        model = model,
+        configuredMode = configuredMode,
+        initialized = initialized,
+        fallback = fallback,
+        errorMessage = errorMessage,
+    )
+}
+
+data class BackendHealthResponse(
+    val status: String,
+    val api: ComponentHealthResponse,
+    val db: ComponentHealthResponse,
+    val redis: ComponentHealthResponse,
+    val celery: ComponentHealthResponse,
+    val whisper: WhisperHealthResponse,
+) {
+    fun toDomain() = BackendHealth(
+        status = status,
+        api = api.toDomain(),
+        db = db.toDomain(),
+        redis = redis.toDomain(),
+        celery = celery.toDomain(),
+        whisper = whisper.toDomain(),
     )
 }
 

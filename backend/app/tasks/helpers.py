@@ -19,3 +19,11 @@ def update_processing_state(
         episode.processing_status = status
         episode.error_message = error_message
     db.commit()
+
+
+def dispatch_extract_job(db, job: ProcessingJob, episode: Episode, url: str, provider_config_dict: dict | None) -> None:
+    from app.tasks.extract_task import extract_task
+
+    async_result = extract_task.delay(job.id, episode.id, url, provider_config_dict)
+    job.celery_task_id = async_result.id
+    db.commit()

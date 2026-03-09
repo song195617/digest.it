@@ -27,7 +27,9 @@ data class Episode(
     val durationSeconds: Int,
     val createdAt: Instant,
     val processingStatus: ProcessingStatus,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val isFavorite: Boolean = false,
+    val lastOpenedAt: Instant? = null,
 )
 
 data class ProcessingJob(
@@ -75,6 +77,13 @@ data class ChatSession(
     val messages: List<ChatMessage>
 )
 
+data class ChatSessionInfo(
+    val sessionId: String,
+    val createdAt: Instant,
+    val messageCount: Int,
+    val previewText: String
+)
+
 data class ChatMessage(
     val id: String,
     val sessionId: String,
@@ -86,3 +95,42 @@ data class ChatMessage(
 )
 
 enum class MessageRole { USER, ASSISTANT }
+
+enum class SearchSourceType {
+    TITLE,
+    SUMMARY,
+    TRANSCRIPT
+}
+
+data class SearchResult(
+    val episodeId: String,
+    val title: String,
+    val subtitle: String,
+    val previewText: String,
+    val sourceType: SearchSourceType,
+    val timestampMs: Long? = null,
+)
+
+data class BackendComponentHealth(
+    val status: String,
+    val detail: String? = null,
+)
+
+data class BackendWhisperHealth(
+    val status: String,
+    val mode: String,
+    val model: String,
+    val configuredMode: String,
+    val initialized: Boolean,
+    val fallback: Boolean,
+    val errorMessage: String? = null,
+)
+
+data class BackendHealth(
+    val status: String,
+    val api: BackendComponentHealth,
+    val db: BackendComponentHealth,
+    val redis: BackendComponentHealth,
+    val celery: BackendComponentHealth,
+    val whisper: BackendWhisperHealth,
+)

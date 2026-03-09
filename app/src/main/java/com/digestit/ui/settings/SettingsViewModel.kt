@@ -3,6 +3,8 @@ package com.digestit.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.digestit.data.local.datastore.UserPreferencesDataStore
+import com.digestit.domain.model.BackendHealth
+import com.digestit.domain.repository.IEpisodeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,11 +35,15 @@ data class SettingsState(
     val availableModels: List<String> = emptyList(),
     val isLoadingModels: Boolean = false,
     val modelsError: String? = null,
+    val isTestingBackend: Boolean = false,
+    val backendHealth: BackendHealth? = null,
+    val backendTestError: String? = null,
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val prefs: UserPreferencesDataStore
+    private val prefs: UserPreferencesDataStore,
+    private val repository: IEpisodeRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -77,7 +83,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun onClaudeKeyChange(key: String) { _state.update { it.copy(claudeKey = key) } }
-    fun onBackendUrlChange(url: String) { _state.update { it.copy(backendUrl = url) } }
+    fun onBackendUrlChange(url: String) { _state.update { it.copy(backendUrl = url, backendTestError = null) } }
     fun onAiProviderChange(provider: String) {
         _state.update { it.copy(aiProvider = provider, availableModels = emptyList(), modelsError = null) }
     }
@@ -120,6 +126,25 @@ class SettingsViewModel @Inject constructor(
                 onSuccess = { models -> _state.update { it.copy(isLoadingModels = false, availableModels = models) } },
                 onFailure = { e -> _state.update { it.copy(isLoadingModels = false, modelsError = e.message ?: "请求失败") } }
             )
+        }
+    }
+
+    fun testBackendConnection() {
+        viewModelScope.launch {
+            _state.update { it.copy(isTestingBackend = true, backendTestError = null) }
+            runCatching { repository.testBackendHealth() }
+                .onSuccess { health ->
+                    _state.update { it.copy(isTestingBackend = false, backendHealth = health, backendTestError = null) }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            isTestingBackend = false,
+                            backendHealth = null,
+                            backendTestError = error.message ?: "连接测试失败",
+                        )
+                    }
+                }
         }
     }
 

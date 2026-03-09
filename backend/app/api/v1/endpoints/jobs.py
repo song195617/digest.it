@@ -1,13 +1,13 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.database import get_db
-from app.models.episode import Episode, ProcessingJob, ProcessingStatus, Platform
+from app.models.episode import Episode, Platform, ProcessingJob, ProcessingStatus
 from app.services.ai.provider_config import ProviderConfig
 from app.services.url_parser import detect_platform
-from app.tasks.extract_task import extract_task
+from app.tasks.helpers import dispatch_extract_job
 
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
 
@@ -32,6 +32,16 @@ STATUS_PROGRESS = {
     ProcessingStatus.SUMMARIZING: 0.75,
     ProcessingStatus.COMPLETED: 1.0,
     ProcessingStatus.FAILED: 0.0,
+}
+
+
+STEP_LABELS = {
+    ProcessingStatus.QUEUED: "等待处理...",
+    ProcessingStatus.EXTRACTING: "正在提取内容...",
+    ProcessingStatus.TRANSCRIBING: "正在转录音频...",
+    ProcessingStatus.SUMMARIZING: "正在生成摘要...",
+    ProcessingStatus.COMPLETED: "处理完成",
+    ProcessingStatus.FAILED: "处理失败",
 }
 
 
@@ -70,13 +80,27 @@ def _reuse_existing_job(db: Session, normalized_url: str) -> ProcessingJob | Non
         episode_id=episode.id,
         status=episode.processing_status,
         progress=STATUS_PROGRESS.get(episode.processing_status, 0.0),
-        current_step="复用已存在结果" if episode.processing_status == ProcessingStatus.COMPLETED else "继续处理已存在任务",
+        current_step=(
+            "复用已存在结果"
+            if episode.processing_status == ProcessingStatus.COMPLETED
+            else "继续处理已存在任务"
+        ),
         error_message=episode.error_message,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
     return job
+
+
+def _create_job(episode_id: str, status: ProcessingStatus, current_step: str | None = None) -> ProcessingJob:
+    return ProcessingJob(
+        id=str(uuid.uuid4()),
+        episode_id=episode_id,
+        status=status,
+        progress=STATUS_PROGRESS.get(status, 0.0),
+        current_step=current_step or STEP_LABELS[status],
+    )
 
 
 @router.post("", response_model=JobStatusResponse)
@@ -104,31 +128,23 @@ async def submit_url(
         fallback_claude_key=settings.claude_api_key,
     )
 
-    episode_id = str(uuid.uuid4())
-    job_id = str(uuid.uuid4())
-
     episode = Episode(
-        id=episode_id,
+        id=str(uuid.uuid4()),
         platform=parsed.platform,
         original_url=parsed.normalized_url,
-        title="处理中…",
+        title="处理中...",
         processing_status=ProcessingStatus.QUEUED,
+        error_message=None,
     )
-    job = ProcessingJob(
-        id=job_id,
-        episode_id=episode_id,
-        status=ProcessingStatus.QUEUED,
-        progress=0.0,
-        current_step="等待处理…",
-    )
+    job = _create_job(episode.id, ProcessingStatus.QUEUED)
     db.add(episode)
     db.add(job)
     db.commit()
+    db.refresh(episode)
+    db.refresh(job)
 
     try:
-        async_result = extract_task.delay(job_id, episode_id, parsed.normalized_url, provider_config.to_dict())
-        job.celery_task_id = async_result.id
-        db.commit()
+        dispatch_extract_job(db, job, episode, parsed.normalized_url, provider_config.to_dict())
     except Exception as exc:
         job.status = ProcessingStatus.FAILED
         job.error_message = str(exc)

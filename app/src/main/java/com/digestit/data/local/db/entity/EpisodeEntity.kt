@@ -18,7 +18,9 @@ data class EpisodeEntity(
     val durationSeconds: Int,
     val createdAt: Long,
     val processingStatus: String,
-    val errorMessage: String?
+    val errorMessage: String?,
+    val isFavorite: Boolean = false,
+    val lastOpenedAt: Long? = null,
 ) {
     fun toDomain() = Episode(
         id = id,
@@ -30,7 +32,9 @@ data class EpisodeEntity(
         durationSeconds = durationSeconds,
         createdAt = Instant.ofEpochMilli(createdAt),
         processingStatus = ProcessingStatus.valueOf(processingStatus),
-        errorMessage = errorMessage
+        errorMessage = errorMessage,
+        isFavorite = isFavorite,
+        lastOpenedAt = lastOpenedAt?.let(Instant::ofEpochMilli),
     )
 
     companion object {
@@ -44,7 +48,9 @@ data class EpisodeEntity(
             durationSeconds = e.durationSeconds,
             createdAt = e.createdAt.toEpochMilli(),
             processingStatus = e.processingStatus.name,
-            errorMessage = e.errorMessage
+            errorMessage = e.errorMessage,
+            isFavorite = e.isFavorite,
+            lastOpenedAt = e.lastOpenedAt?.toEpochMilli(),
         )
     }
 }

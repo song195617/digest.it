@@ -1,10 +1,32 @@
 package com.digestit.ui.processing
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -18,7 +40,9 @@ fun ProcessingScreen(
     jobId: String,
     viewModel: ProcessingViewModel = hiltViewModel(),
     onProcessingComplete: (String) -> Unit,
-    onNavigateBack: () -> Unit
+    onNavigateToProcessing: (String) -> Unit,
+    onNavigateHome: () -> Unit,
+    onNavigateBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val effect by viewModel.effects.collectAsState()
@@ -31,10 +55,14 @@ fun ProcessingScreen(
                 onProcessingComplete(e.episodeId)
                 viewModel.onEffectConsumed()
             }
+            is ProcessingEffect.NavigateToProcessing -> {
+                onNavigateToProcessing(e.jobId)
+                viewModel.onEffectConsumed()
+            }
             is ProcessingEffect.ProcessingFailed -> {
                 viewModel.onEffectConsumed()
             }
-            else -> {}
+            null -> Unit
         }
     }
 
@@ -54,46 +82,78 @@ fun ProcessingScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(32.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             CircularProgressIndicator(
-                progress = { state.progress },
+                progress = { state.progress.coerceIn(0f, 1f) },
                 modifier = Modifier.size(120.dp),
                 strokeWidth = 8.dp
             )
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 "${(state.progress * 100).toInt()}%",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 state.currentStep,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             StepIndicators(currentStatus = state.status)
 
             if (state.errorMessage != null) {
                 Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    "错误: ${state.errorMessage}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = state.errorMessage ?: "处理失败",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
-                "处理可能需要数分钟，你可以关闭此页面，完成后会收到通知",
+                "处理可能需要数分钟，你可以返回首页继续等待。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(modifier = Modifier.height(24.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(onClick = onNavigateHome, modifier = Modifier.weight(1f)) {
+                    Text("返回首页")
+                }
+                OutlinedButton(onClick = onNavigateBack, modifier = Modifier.weight(1f)) {
+                    Text("后台继续处理")
+                }
+            }
+            if (state.status == ProcessingStatus.FAILED && state.episodeId != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = viewModel::retry,
+                    enabled = !state.isRetrying,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (state.isRetrying) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("失败后重试")
+                    }
+                }
+            }
         }
     }
 }

@@ -1,8 +1,25 @@
 package com.digestit.ui.share
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +52,7 @@ fun ShareBottomSheet(
             val platformLabel = when (state.platform) {
                 Platform.BILIBILI -> "哔哩哔哩 视频"
                 Platform.XIAOYUZHOU -> "小宇宙 播客"
-                Platform.UNKNOWN -> "未知链接"
+                Platform.UNKNOWN -> state.validationTitle
             }
 
             Surface(
@@ -43,19 +60,23 @@ fun ShareBottomSheet(
                 shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(platformLabel, style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(state.url, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                    Text(
+                        state.validationMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (state.validationKind == ShareValidationKind.VALID) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        }
+                    )
+                    if (state.url.isNotBlank()) {
+                        Text(state.url, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
+                    }
                 }
-            }
-
-            if (state.platform == Platform.UNKNOWN) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("仅支持小宇宙和哔哩哔哩链接", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error)
             }
 
             if (state.error != null) {
@@ -73,7 +94,7 @@ fun ShareBottomSheet(
                 Button(
                     onClick = viewModel::onConfirm,
                     modifier = Modifier.weight(1f),
-                    enabled = !state.isSubmitting && state.platform != Platform.UNKNOWN
+                    enabled = !state.isSubmitting && state.validationKind == ShareValidationKind.VALID
                 ) {
                     if (state.isSubmitting) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)

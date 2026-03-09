@@ -6,6 +6,7 @@ import com.digestit.domain.model.Episode
 import com.digestit.domain.model.Summary
 import com.digestit.domain.repository.IEpisodeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,10 +34,20 @@ class SummaryViewModel @Inject constructor(
 
     fun load(episodeId: String) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
-            val episode = repository.getEpisode(episodeId)
-            val summary = repository.getSummary(episodeId)
-            _state.update { it.copy(isLoading = false, episode = episode, summary = summary) }
+            _state.update { it.copy(isLoading = true, error = null) }
+            repository.markEpisodeOpened(episodeId)
+            val episodeDeferred = async { repository.getEpisode(episodeId) }
+            val summaryDeferred = async { repository.getSummary(episodeId) }
+            val episode = episodeDeferred.await()
+            val summary = summaryDeferred.await()
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    episode = episode,
+                    summary = summary,
+                    error = if (summary == null) "摘要尚未生成" else null,
+                )
+            }
         }
     }
 

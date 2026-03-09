@@ -1,13 +1,17 @@
 import json
 import shutil
+import uuid
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from app.api.v1.endpoints.jobs import JobStatusResponse, STATUS_PROGRESS, _job_to_response
 from app.config import settings
 from app.core.celery_app import celery_app
 from app.core.database import get_db
-from app.models.episode import Episode, Transcript, Summary, ProcessingJob, ProcessingStatus, ChatMessage
+from app.models.episode import ChatMessage, Episode, ProcessingJob, ProcessingStatus, Summary, Transcript
+from app.services.ai.provider_config import ProviderConfig
+from app.tasks.helpers import dispatch_extract_job
 
 router = APIRouter(prefix="/v1/episodes", tags=["episodes"])
 
@@ -83,6 +87,63 @@ async def get_episode(episode_id: str, db: Session = Depends(get_db)):
     return _episode_to_response(ep)
 
 
+@router.post("/{episode_id}/retry", response_model=JobStatusResponse)
+async def retry_episode(
+    episode_id: str,
+    db: Session = Depends(get_db),
+    x_ai_provider: str | None = Header(default=None, alias="X-AI-Provider"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_ai_model: str | None = Header(default=None, alias="X-AI-Model"),
+    x_ai_base_url: str | None = Header(default=None, alias="X-AI-Base-URL"),
+):
+    episode = db.query(Episode).filter(Episode.id == episode_id).first()
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    if episode.processing_status != ProcessingStatus.FAILED:
+        raise HTTPException(status_code=409, detail="Only failed episodes can be retried")
+
+    provider_config = ProviderConfig.from_headers(
+        provider=x_ai_provider,
+        api_key=x_api_key,
+        model=x_ai_model,
+        base_url=x_ai_base_url,
+        fallback_claude_key=settings.claude_api_key,
+    )
+
+    db.query(Transcript).filter(Transcript.episode_id == episode_id).delete(synchronize_session=False)
+    db.query(Summary).filter(Summary.episode_id == episode_id).delete(synchronize_session=False)
+    db.query(ChatMessage).filter(ChatMessage.episode_id == episode_id).delete(synchronize_session=False)
+    shutil.rmtree(Path(settings.audio_tmp_dir) / episode_id, ignore_errors=True)
+
+    episode.processing_status = ProcessingStatus.QUEUED
+    episode.error_message = None
+
+    job = ProcessingJob(
+        id=str(uuid.uuid4()),
+        episode_id=episode_id,
+        status=ProcessingStatus.QUEUED,
+        progress=STATUS_PROGRESS[ProcessingStatus.QUEUED],
+        current_step="等待重新处理...",
+        error_message=None,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(episode)
+    db.refresh(job)
+
+    try:
+        dispatch_extract_job(db, job, episode, episode.original_url, provider_config.to_dict())
+    except Exception as exc:
+        job.status = ProcessingStatus.FAILED
+        job.error_message = str(exc)
+        episode.processing_status = ProcessingStatus.FAILED
+        episode.error_message = str(exc)
+        db.commit()
+        return _job_to_response(job)
+
+    return _job_to_response(job)
+
+
 @router.delete("/{episode_id}")
 async def delete_episode(episode_id: str, db: Session = Depends(get_db)):
     ep = db.query(Episode).filter(Episode.id == episode_id).first()
@@ -135,6 +196,9 @@ async def get_summary(episode_id: str, db: Session = Depends(get_db)):
         one_liner=summary.one_liner,
         key_points=json.loads(summary.key_points_json) if summary.key_points_json else [],
         topics=json.loads(summary.topics_json) if summary.topics_json else [],
-        highlights=[HighlightDto(**highlight) for highlight in (json.loads(summary.highlights_json) if summary.highlights_json else [])],
+        highlights=[
+            HighlightDto(**highlight)
+            for highlight in (json.loads(summary.highlights_json) if summary.highlights_json else [])
+        ],
         full_summary=summary.full_summary,
     )

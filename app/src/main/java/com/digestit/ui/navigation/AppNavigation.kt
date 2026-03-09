@@ -2,8 +2,10 @@ package com.digestit.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.digestit.ui.chat.ChatScreen
 import com.digestit.ui.home.HomeScreen
 import com.digestit.ui.processing.ProcessingScreen
@@ -19,8 +21,14 @@ sealed class Screen(val route: String) {
     object Summary : Screen("summary/{episodeId}") {
         fun createRoute(episodeId: String) = "summary/$episodeId"
     }
-    object Transcript : Screen("transcript/{episodeId}") {
-        fun createRoute(episodeId: String) = "transcript/$episodeId"
+    object Transcript : Screen("transcript/{episodeId}?timestampMs={timestampMs}") {
+        fun createRoute(episodeId: String, timestampMs: Long? = null): String {
+            return if (timestampMs != null) {
+                "transcript/$episodeId?timestampMs=$timestampMs"
+            } else {
+                "transcript/$episodeId?timestampMs=-1"
+            }
+        }
     }
     object Chat : Screen("chat/{episodeId}") {
         fun createRoute(episodeId: String) = "chat/$episodeId"
@@ -40,6 +48,9 @@ fun AppNavigation(navController: NavHostController) {
                 onNavigateToSummary = { episodeId ->
                     navController.navigate(Screen.Summary.createRoute(episodeId))
                 },
+                onNavigateToTranscript = { episodeId, timestampMs ->
+                    navController.navigate(Screen.Transcript.createRoute(episodeId, timestampMs))
+                },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
                 }
@@ -55,6 +66,17 @@ fun AppNavigation(navController: NavHostController) {
                         popUpTo(Screen.Processing.route) { inclusive = true }
                     }
                 },
+                onNavigateToProcessing = { nextJobId ->
+                    navController.navigate(Screen.Processing.createRoute(nextJobId)) {
+                        popUpTo(Screen.Processing.route) { inclusive = true }
+                    }
+                },
+                onNavigateHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateBack = { navController.popBackStack() }
             )
         }
@@ -63,8 +85,8 @@ fun AppNavigation(navController: NavHostController) {
             val episodeId = backStackEntry.arguments?.getString("episodeId") ?: return@composable
             SummaryScreen(
                 episodeId = episodeId,
-                onNavigateToTranscript = {
-                    navController.navigate(Screen.Transcript.createRoute(episodeId))
+                onNavigateToTranscript = { timestampMs ->
+                    navController.navigate(Screen.Transcript.createRoute(episodeId, timestampMs))
                 },
                 onNavigateToChat = {
                     navController.navigate(Screen.Chat.createRoute(episodeId))
@@ -73,10 +95,15 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
 
-        composable(Screen.Transcript.route) { backStackEntry ->
+        composable(
+            route = Screen.Transcript.route,
+            arguments = listOf(navArgument("timestampMs") { type = NavType.LongType; defaultValue = -1L })
+        ) { backStackEntry ->
             val episodeId = backStackEntry.arguments?.getString("episodeId") ?: return@composable
+            val timestampArg = backStackEntry.arguments?.getLong("timestampMs") ?: -1L
             TranscriptScreen(
                 episodeId = episodeId,
+                initialTimestampMs = timestampArg.takeIf { it >= 0L },
                 onNavigateBack = { navController.popBackStack() }
             )
         }
@@ -85,6 +112,9 @@ fun AppNavigation(navController: NavHostController) {
             val episodeId = backStackEntry.arguments?.getString("episodeId") ?: return@composable
             ChatScreen(
                 episodeId = episodeId,
+                onNavigateToTranscript = { timestampMs ->
+                    navController.navigate(Screen.Transcript.createRoute(episodeId, timestampMs))
+                },
                 onNavigateBack = { navController.popBackStack() }
             )
         }

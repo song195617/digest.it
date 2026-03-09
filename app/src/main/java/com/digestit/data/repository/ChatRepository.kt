@@ -6,8 +6,10 @@ import com.digestit.data.local.db.entity.ChatMessageEntity
 import com.digestit.data.remote.websocket.ChatWebSocketManager
 import com.digestit.domain.model.ChatMessage
 import com.digestit.domain.model.ChatSession
+import com.digestit.domain.model.ChatSessionInfo
 import com.digestit.domain.model.MessageRole
 import com.digestit.domain.repository.IChatRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -18,23 +20,29 @@ import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ChatRepository @Inject constructor(
     private val chatDao: ChatDao,
     private val webSocketManager: ChatWebSocketManager,
     private val prefs: UserPreferencesDataStore
 ) : IChatRepository {
 
-    override fun getChatSession(episodeId: String): Flow<ChatSession?> =
-        chatDao.observeLatestSessionId(episodeId).flatMapLatest { latestSessionId ->
-            if (latestSessionId.isNullOrBlank()) {
+    override fun getChatSession(episodeId: String, sessionId: String?): Flow<ChatSession?> {
+        val sessionFlow = if (sessionId.isNullOrBlank()) {
+            chatDao.observeLatestSessionId(episodeId)
+        } else {
+            flowOf(sessionId)
+        }
+        return sessionFlow.flatMapLatest { resolvedSessionId ->
+            if (resolvedSessionId.isNullOrBlank()) {
                 flowOf(null)
             } else {
-                chatDao.getMessages(episodeId, latestSessionId).map { entities ->
+                chatDao.getMessages(episodeId, resolvedSessionId).map { entities ->
                     if (entities.isEmpty()) {
                         null
                     } else {
                         ChatSession(
-                            id = latestSessionId,
+                            id = resolvedSessionId,
                             episodeId = episodeId,
                             createdAt = Instant.ofEpochMilli(entities.first().timestamp),
                             messages = entities.map { it.toDomain() }
@@ -43,6 +51,21 @@ class ChatRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    override fun listSessions(episodeId: String): Flow<List<ChatSessionInfo>> =
+        chatDao.observeSessions(episodeId).map { rows ->
+            rows.map { row ->
+                ChatSessionInfo(
+                    sessionId = row.sessionId,
+                    createdAt = Instant.ofEpochMilli(row.createdAt),
+                    messageCount = row.messageCount,
+                    previewText = row.preview,
+                )
+            }
+        }
+
+    override suspend fun startNewSession(episodeId: String): String = UUID.randomUUID().toString()
 
     override suspend fun sendMessage(
         episodeId: String,

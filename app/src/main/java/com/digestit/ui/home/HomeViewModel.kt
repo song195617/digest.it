@@ -8,11 +8,14 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.digestit.domain.model.Episode
 import com.digestit.domain.model.ProcessingStatus
+import com.digestit.domain.model.SearchResult
+import com.digestit.domain.model.SearchSourceType
 import com.digestit.domain.repository.IEpisodeRepository
 import com.digestit.domain.usecase.GetEpisodesUseCase
 import com.digestit.domain.usecase.SubmitUrlUseCase
 import com.digestit.worker.JobPollingWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,8 +24,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class HomeFilter {
+    ALL,
+    FAVORITES,
+    RECENT
+}
+
 data class HomeState(
     val episodes: List<Episode> = emptyList(),
+    val processingEpisodes: List<Episode> = emptyList(),
+    val completedEpisodes: List<Episode> = emptyList(),
+    val failedEpisodes: List<Episode> = emptyList(),
+    val searchQuery: String = "",
+    val searchResults: List<SearchResult> = emptyList(),
+    val selectedFilter: HomeFilter = HomeFilter.ALL,
     val isSubmitting: Boolean = false,
     val urlInput: String = "",
     val error: String? = null
@@ -31,6 +46,7 @@ data class HomeState(
 sealed class HomeEffect {
     data class NavigateToProcessing(val jobId: String) : HomeEffect()
     data class NavigateToSummary(val episodeId: String) : HomeEffect()
+    data class NavigateToTranscript(val episodeId: String, val timestampMs: Long?) : HomeEffect()
     data class ShowError(val message: String) : HomeEffect()
 }
 
@@ -48,10 +64,15 @@ class HomeViewModel @Inject constructor(
     private val _effects = MutableStateFlow<HomeEffect?>(null)
     val effects: StateFlow<HomeEffect?> = _effects.asStateFlow()
 
+    private var latestEpisodes: List<Episode> = emptyList()
+    private var latestSearchResults: List<SearchResult> = emptyList()
+    private var searchJob: Job? = null
+
     init {
         viewModelScope.launch {
             getEpisodes().collect { episodes ->
-                _state.update { it.copy(episodes = episodes) }
+                latestEpisodes = episodes
+                syncContent()
             }
         }
         viewModelScope.launch { repository.refreshEpisodes() }
@@ -59,6 +80,28 @@ class HomeViewModel @Inject constructor(
 
     fun onUrlInputChange(url: String) {
         _state.update { it.copy(urlInput = url, error = null) }
+    }
+
+    fun onSearchQueryChange(query: String) {
+        _state.update { it.copy(searchQuery = query) }
+        if (query.isBlank()) {
+            latestSearchResults = emptyList()
+            syncContent()
+            return
+        }
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            latestSearchResults = repository.searchContent(query)
+            syncContent()
+        }
+    }
+
+    fun onFilterChange(filter: HomeFilter) {
+        _state.update { it.copy(selectedFilter = filter) }
+        syncContent()
+        if (_state.value.searchQuery.isNotBlank()) {
+            onSearchQueryChange(_state.value.searchQuery)
+        }
     }
 
     fun onSubmitUrl() {
@@ -121,6 +164,32 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun onSearchResultClick(result: SearchResult) {
+        _effects.value = when (result.sourceType) {
+            SearchSourceType.TRANSCRIPT -> HomeEffect.NavigateToTranscript(result.episodeId, result.timestampMs)
+            else -> HomeEffect.NavigateToSummary(result.episodeId)
+        }
+    }
+
+    fun toggleFavorite(episode: Episode) {
+        viewModelScope.launch {
+            repository.setFavorite(episode.id, !episode.isFavorite)
+        }
+    }
+
+    fun retryEpisode(episodeId: String) {
+        viewModelScope.launch {
+            runCatching { repository.retryEpisode(episodeId) }
+                .onSuccess { job ->
+                    enqueuePollingWorker(job.jobId, episodeId)
+                    _effects.value = HomeEffect.NavigateToProcessing(job.jobId)
+                }
+                .onFailure { error ->
+                    _effects.value = HomeEffect.ShowError(error.message ?: "重试失败")
+                }
+        }
+    }
+
     fun onEffectConsumed() {
         _effects.value = null
     }
@@ -142,5 +211,38 @@ class HomeViewModel @Inject constructor(
             .addTag("episode:$episodeId")
             .build()
         workManager.enqueue(request)
+    }
+
+    private fun syncContent() {
+        val filteredEpisodes = applyFilter(latestEpisodes, _state.value.selectedFilter)
+        val processing = filteredEpisodes.filter {
+            it.processingStatus !in setOf(ProcessingStatus.COMPLETED, ProcessingStatus.FAILED)
+        }
+        val completed = filteredEpisodes.filter { it.processingStatus == ProcessingStatus.COMPLETED }
+        val failed = filteredEpisodes.filter { it.processingStatus == ProcessingStatus.FAILED }
+        val filteredSearch = latestSearchResults.filter { result ->
+            filteredEpisodes.any { it.id == result.episodeId }
+        }
+        _state.update {
+            it.copy(
+                episodes = filteredEpisodes,
+                processingEpisodes = processing,
+                completedEpisodes = completed,
+                failedEpisodes = failed,
+                searchResults = filteredSearch,
+            )
+        }
+    }
+
+    private fun applyFilter(episodes: List<Episode>, filter: HomeFilter): List<Episode> {
+        val base = when (filter) {
+            HomeFilter.ALL -> episodes
+            HomeFilter.FAVORITES -> episodes.filter { it.isFavorite }
+            HomeFilter.RECENT -> episodes.sortedByDescending { it.lastOpenedAt ?: it.createdAt }
+        }
+        return when (filter) {
+            HomeFilter.RECENT -> base
+            else -> base.sortedByDescending { it.createdAt }
+        }
     }
 }
