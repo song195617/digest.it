@@ -150,15 +150,12 @@ async def delete_episode(episode_id: str, db: Session = Depends(get_db)):
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
 
-    jobs = db.query(ProcessingJob).filter(ProcessingJob.episode_id == episode_id).all()
-    for job in jobs:
+    for job in db.query(ProcessingJob).filter(ProcessingJob.episode_id == episode_id).all():
         if job.celery_task_id and job.status not in {ProcessingStatus.COMPLETED, ProcessingStatus.FAILED}:
             try:
                 celery_app.control.revoke(job.celery_task_id, terminate=False)
             except Exception:
                 pass
-        job.status = ProcessingStatus.FAILED
-        job.error_message = "Episode deleted by user"
 
     db.query(Transcript).filter(Transcript.episode_id == episode_id).delete(synchronize_session=False)
     db.query(Summary).filter(Summary.episode_id == episode_id).delete(synchronize_session=False)

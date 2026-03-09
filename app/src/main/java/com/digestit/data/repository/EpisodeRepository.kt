@@ -176,11 +176,12 @@ class EpisodeRepository @Inject constructor(
     }
 
     override suspend fun deleteEpisode(episodeId: String) {
-        api.deleteEpisode(episodeId)
+        // Delete locally first so the UI updates immediately regardless of backend result
         episodeDao.deleteTranscript(episodeId)
         episodeDao.deleteSummary(episodeId)
         chatDao.clearHistory(episodeId)
         episodeDao.deleteEpisode(episodeId)
+        api.deleteEpisode(episodeId)
     }
 
     private suspend fun refreshEpisodeFromRemote(episodeId: String): Episode? {
