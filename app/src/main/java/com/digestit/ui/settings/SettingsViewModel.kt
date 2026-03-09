@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 data class SettingsState(
@@ -137,21 +138,56 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun testBackendConnection() {
+        val urlToTest = _state.value.backendUrl.trimEnd('/')
+        if (urlToTest.isBlank()) {
+            _state.update { it.copy(backendTestError = "请先填写后端 URL") }
+            return
+        }
         viewModelScope.launch {
-            _state.update { it.copy(isTestingBackend = true, backendTestError = null) }
-            runCatching { repository.testBackendHealth() }
-                .onSuccess { health ->
-                    _state.update { it.copy(isTestingBackend = false, backendHealth = health, backendTestError = null) }
+            _state.update { it.copy(isTestingBackend = true, backendTestError = null, backendHealth = null) }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val client = OkHttpClient.Builder()
+                        .connectTimeout(10, TimeUnit.SECONDS)
+                        .readTimeout(10, TimeUnit.SECONDS)
+                        .build()
+                    val resp = client.newCall(
+                        Request.Builder().url("$urlToTest/v1/health").build()
+                    ).execute()
+                    val body = resp.body?.string() ?: throw Exception("空响应")
+                    if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                    // 直接传给 repository 转换，复用 JSON 解析 + domain 映射
+                    // 只需验证后端可达并返回诊断信息
+                    val json = org.json.JSONObject(body)
+                    json.getString("status") // 确认字段存在
+                    body
                 }
-                .onFailure { error ->
+            }.fold(
+                onSuccess = { body ->
+                    // 用 Gson 解析完整 health response
+                    runCatching {
+                        val gson = com.google.gson.Gson()
+                        val dto = gson.fromJson(body, com.digestit.data.remote.dto.BackendHealthResponse::class.java)
+                        dto.toDomain()
+                    }.fold(
+                        onSuccess = { health ->
+                            _state.update { it.copy(isTestingBackend = false, backendHealth = health, backendTestError = null) }
+                        },
+                        onFailure = { e ->
+                            _state.update { it.copy(isTestingBackend = false, backendTestError = "响应解析失败: ${e.message}") }
+                        }
+                    )
+                },
+                onFailure = { e ->
                     _state.update {
                         it.copy(
                             isTestingBackend = false,
                             backendHealth = null,
-                            backendTestError = error.message ?: "连接测试失败",
+                            backendTestError = e.message ?: "连接测试失败",
                         )
                     }
                 }
+            )
         }
     }
 
