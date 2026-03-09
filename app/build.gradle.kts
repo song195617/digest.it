@@ -11,6 +11,15 @@ android {
     compileSdk = 35
     buildToolsVersion = "35.0.0"
 
+    signingConfigs {
+        create("digestit") {
+            storeFile = file("../digestit.jks")
+            storePassword = "digestit_sign"
+            keyAlias = "digestit"
+            keyPassword = "digestit_sign"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.digestit"
         minSdk = 26
@@ -24,6 +33,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("digestit")
             manifestPlaceholders["allowBackup"] = false
             manifestPlaceholders["usesCleartextTraffic"] = false
             proguardFiles(
@@ -33,6 +43,7 @@ android {
         }
         debug {
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("digestit")
             manifestPlaceholders["allowBackup"] = true
             manifestPlaceholders["usesCleartextTraffic"] = true
         }
