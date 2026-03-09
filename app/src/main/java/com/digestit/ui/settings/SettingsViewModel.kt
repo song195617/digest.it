@@ -23,6 +23,7 @@ import javax.inject.Inject
 data class SettingsState(
     val claudeKey: String = "",
     val backendUrl: String = "",
+    val backendUrlHistory: List<String> = emptyList(),
     val isSaving: Boolean = false,
     val savedSuccess: Boolean = false,
     val aiProvider: String = "claude",
@@ -51,6 +52,11 @@ class SettingsViewModel @Inject constructor(
     val state: StateFlow<SettingsState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            prefs.backendUrlHistory.collect { history ->
+                _state.update { it.copy(backendUrlHistory = history) }
+            }
+        }
         viewModelScope.launch {
             combine(
                 prefs.claudeApiKey,
@@ -157,6 +163,7 @@ class SettingsViewModel @Inject constructor(
             val urlChanged = oldUrl != s.backendUrl
             prefs.setClaudeApiKey(s.claudeKey)
             prefs.setBackendUrl(s.backendUrl)
+            prefs.addBackendUrlToHistory(s.backendUrl)
             prefs.setAiProvider(s.aiProvider)
             prefs.setGeminiApiKey(s.geminiApiKey)
             prefs.setCustomAiBaseUrl(s.customAiBaseUrl)

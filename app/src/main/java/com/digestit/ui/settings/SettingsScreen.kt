@@ -102,13 +102,10 @@ fun SettingsScreen(
             HorizontalDivider()
 
             Text("后端服务器", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
+            BackendUrlField(
                 value = state.backendUrl,
+                history = state.backendUrlHistory,
                 onValueChange = viewModel::onBackendUrlChange,
-                label = { Text("后端 URL") },
-                placeholder = { Text("http://10.0.2.2:8000") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -296,6 +293,52 @@ private fun ModelSelector(
     if (availableModels.isNotEmpty()) {
         Text("已获取 ${availableModels.size} 个模型", color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackendUrlField(
+    value: String,
+    history: List<String>,
+    onValueChange: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded && history.isNotEmpty(),
+        onExpandedChange = { if (history.isNotEmpty()) expanded = it },
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                onValueChange(it)
+                expanded = false
+            },
+            label = { Text("后端 URL") },
+            placeholder = { Text("http://10.0.2.2:8000") },
+            trailingIcon = {
+                if (history.isNotEmpty()) {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                }
+            },
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+            singleLine = true,
+        )
+        ExposedDropdownMenu(
+            expanded = expanded && history.isNotEmpty(),
+            onDismissRequest = { expanded = false },
+        ) {
+            history.forEach { url ->
+                DropdownMenuItem(
+                    text = { Text(url, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        onValueChange(url)
+                        expanded = false
+                    },
+                )
+            }
+        }
     }
 }
 

@@ -49,6 +49,9 @@ class UserPreferencesDataStore @Inject constructor(
         private val KEY_DEEPSEEK_BASE_URL = stringPreferencesKey("deepseek_base_url")
         private val KEY_DEEPSEEK_MODEL = stringPreferencesKey("deepseek_model")
         private val KEY_NOTIFICATION_PERMISSION_REQUESTED = booleanPreferencesKey("notification_permission_requested")
+        private val KEY_BACKEND_URL_HISTORY = stringPreferencesKey("backend_url_history")
+        private const val URL_HISTORY_MAX = 5
+        private const val URL_HISTORY_SEP = "\n"
 
         const val DEEPSEEK_DEFAULT_URL = "https://api.deepseek.com"
         const val DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
@@ -69,6 +72,13 @@ class UserPreferencesDataStore @Inject constructor(
     val deepseekModel: Flow<String> = context.dataStore.data.map { it[KEY_DEEPSEEK_MODEL] ?: DEEPSEEK_DEFAULT_MODEL }
     val notificationPermissionRequested: Flow<Boolean> =
         context.dataStore.data.map { it[KEY_NOTIFICATION_PERMISSION_REQUESTED] ?: false }
+
+    val backendUrlHistory: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_BACKEND_URL_HISTORY]
+            ?.split(URL_HISTORY_SEP)
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+    }
 
     val currentNetworkSettings: StateFlow<NetworkSettingsSnapshot> = networkSettingsState
 
@@ -106,6 +116,19 @@ class UserPreferencesDataStore @Inject constructor(
 
     suspend fun setBackendUrl(url: String) {
         context.dataStore.edit { it[KEY_BACKEND_URL] = url }
+    }
+
+    suspend fun addBackendUrlToHistory(url: String) {
+        if (url.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val current = prefs[KEY_BACKEND_URL_HISTORY]
+                ?.split(URL_HISTORY_SEP)
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+            val updated = (listOf(url) + current.filter { it != url })
+                .take(URL_HISTORY_MAX)
+            prefs[KEY_BACKEND_URL_HISTORY] = updated.joinToString(URL_HISTORY_SEP)
+        }
     }
 
     suspend fun setAiProvider(provider: String) {
