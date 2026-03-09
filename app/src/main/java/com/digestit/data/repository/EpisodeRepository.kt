@@ -175,6 +175,13 @@ class EpisodeRepository @Inject constructor(
         episodeDao.updateLastOpenedAt(episodeId, Instant.now().toEpochMilli())
     }
 
+    override suspend fun clearAllLocalData() {
+        episodeDao.deleteAllTranscripts()
+        episodeDao.deleteAllSummaries()
+        chatDao.clearAllHistory()
+        episodeDao.deleteAllEpisodes()
+    }
+
     override suspend fun deleteEpisode(episodeId: String) {
         // Delete locally first so the UI updates immediately regardless of backend result
         episodeDao.deleteTranscript(episodeId)

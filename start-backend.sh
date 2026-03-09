@@ -74,18 +74,28 @@ start_uvicorn() {
 
 # ── Celery ────────────────────────────────────────────────────────────────────
 start_celery() {
-    info "Starting Celery worker (log: $LOG_DIR/celery.log)..."
-    # cd into $BACKEND so Python can find the 'app' package
     cd "$BACKEND"
+
+    # 默认队列 worker：处理 extract / summarize 任务
+    info "Starting Celery default worker (log: $LOG_DIR/celery.log)..."
     nohup celery -A app.core.celery_app worker --loglevel=info \
+        --queues=celery --hostname=worker-default@%h \
         > "$LOG_DIR/celery.log" 2>&1 &
     echo $! > "$LOG_DIR/celery.pid"
+
+    # 转录专用 worker：并发=1，确保同时只有一个任务占用 GPU
+    info "Starting Celery transcribe worker (log: $LOG_DIR/celery-transcribe.log)..."
+    nohup celery -A app.core.celery_app worker --loglevel=info \
+        --queues=transcribe --hostname=worker-transcribe@%h --concurrency=1 \
+        > "$LOG_DIR/celery-transcribe.log" 2>&1 &
+    echo $! > "$LOG_DIR/celery-transcribe.pid"
+
     sleep 2
-    # Verify it actually started (not immediately died)
-    if kill -0 "$(cat "$LOG_DIR/celery.pid")" 2>/dev/null; then
-        info "Celery worker started (PID $(cat "$LOG_DIR/celery.pid"))"
+    if kill -0 "$(cat "$LOG_DIR/celery.pid")" 2>/dev/null && \
+       kill -0 "$(cat "$LOG_DIR/celery-transcribe.pid")" 2>/dev/null; then
+        info "Celery workers started"
     else
-        warn "Celery failed to start — check $LOG_DIR/celery.log"
+        warn "A Celery worker failed to start - check $LOG_DIR/celery*.log"
         tail -5 "$LOG_DIR/celery.log"
     fi
 }

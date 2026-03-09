@@ -52,6 +52,9 @@ interface ChatDao {
     @Query("DELETE FROM chat_messages WHERE episodeId = :episodeId")
     suspend fun clearHistory(episodeId: String)
 
+    @Query("DELETE FROM chat_messages")
+    suspend fun clearAllHistory()
+
     @Query("SELECT sessionId FROM chat_messages WHERE episodeId = :episodeId ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLatestSessionId(episodeId: String): String?
 }

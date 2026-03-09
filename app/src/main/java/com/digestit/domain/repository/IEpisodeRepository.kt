@@ -22,4 +22,5 @@ interface IEpisodeRepository {
     suspend fun setFavorite(episodeId: String, isFavorite: Boolean)
     suspend fun markEpisodeOpened(episodeId: String)
     suspend fun deleteEpisode(episodeId: String)
+    suspend fun clearAllLocalData()
 }

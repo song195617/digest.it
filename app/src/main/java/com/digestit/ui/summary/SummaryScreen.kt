@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -36,10 +36,15 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -63,6 +68,7 @@ fun SummaryScreen(
     val state by viewModel.state.collectAsState()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    var showCopyMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(episodeId) { viewModel.load(episodeId) }
 
@@ -123,6 +129,32 @@ fun SummaryScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { state.summary?.let { shareText(buildPlainText(it)) } }) {
+                        Icon(Icons.Default.Share, contentDescription = "分享摘要")
+                    }
+                    Box {
+                        IconButton(onClick = { showCopyMenu = true }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "复制")
+                        }
+                        DropdownMenu(expanded = showCopyMenu, onDismissRequest = { showCopyMenu = false }) {
+                            DropdownMenuItem(text = { Text("复制一句话") }, onClick = {
+                                clipboard.setText(AnnotatedString(state.summary?.oneLiner ?: ""))
+                                showCopyMenu = false
+                            })
+                            DropdownMenuItem(text = { Text("复制完整摘要") }, onClick = {
+                                clipboard.setText(AnnotatedString(state.summary?.fullSummary ?: ""))
+                                showCopyMenu = false
+                            })
+                            DropdownMenuItem(text = { Text("复制纯文本") }, onClick = {
+                                state.summary?.let { clipboard.setText(AnnotatedString(buildPlainText(it))) }
+                                showCopyMenu = false
+                            })
+                            DropdownMenuItem(text = { Text("复制 Markdown") }, onClick = {
+                                state.summary?.let { clipboard.setText(AnnotatedString(buildMarkdown(it))) }
+                                showCopyMenu = false
+                            })
+                        }
+                    }
                     IconButton(onClick = { onNavigateToTranscript(null) }) {
                         Icon(Icons.Default.Description, contentDescription = "查看全文")
                     }
@@ -167,39 +199,11 @@ fun SummaryScreen(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        summary.oneLiner,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SuggestionChip(
-                            onClick = { clipboard.setText(AnnotatedString(summary.oneLiner)) },
-                            label = { Text("复制一句话") },
-                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-                        )
-                        SuggestionChip(
-                            onClick = { clipboard.setText(AnnotatedString(summary.fullSummary)) },
-                            label = { Text("复制完整摘要") },
-                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-                        )
-                        SuggestionChip(
-                            onClick = { clipboard.setText(AnnotatedString(buildPlainText(summary))) },
-                            label = { Text("复制纯文本") },
-                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-                        )
-                        SuggestionChip(
-                            onClick = { clipboard.setText(AnnotatedString(buildMarkdown(summary))) },
-                            label = { Text("复制 Markdown") },
-                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-                        )
-                        SuggestionChip(
-                            onClick = { shareText(buildPlainText(summary)) },
-                            label = { Text("分享摘要") },
-                            icon = { Icon(Icons.Default.Share, contentDescription = null) }
-                        )
-                    }
-                }
+                Text(
+                    summary.oneLiner,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp)
+                )
             }
 
             TabRow(selectedTabIndex = state.selectedTab.ordinal) {

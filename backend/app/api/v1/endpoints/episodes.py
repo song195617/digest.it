@@ -150,12 +150,16 @@ async def delete_episode(episode_id: str, db: Session = Depends(get_db)):
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
 
-    for job in db.query(ProcessingJob).filter(ProcessingJob.episode_id == episode_id).all():
+    jobs = db.query(ProcessingJob).filter(ProcessingJob.episode_id == episode_id).all()
+    for job in jobs:
         if job.celery_task_id and job.status not in {ProcessingStatus.COMPLETED, ProcessingStatus.FAILED}:
             try:
                 celery_app.control.revoke(job.celery_task_id, terminate=False)
             except Exception:
                 pass
+    # Expunge loaded job objects so the bulk delete below doesn't cause StaleDataError
+    for job in jobs:
+        db.expunge(job)
 
     db.query(Transcript).filter(Transcript.episode_id == episode_id).delete(synchronize_session=False)
     db.query(Summary).filter(Summary.episode_id == episode_id).delete(synchronize_session=False)

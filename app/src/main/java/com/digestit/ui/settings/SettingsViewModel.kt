@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -152,6 +153,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isSaving = true) }
             val s = _state.value
+            val oldUrl = prefs.backendUrl.first()
+            val urlChanged = oldUrl != s.backendUrl
             prefs.setClaudeApiKey(s.claudeKey)
             prefs.setBackendUrl(s.backendUrl)
             prefs.setAiProvider(s.aiProvider)
@@ -162,6 +165,10 @@ class SettingsViewModel @Inject constructor(
             prefs.setDeepseekApiKey(s.deepseekApiKey)
             prefs.setDeepseekBaseUrl(s.deepseekBaseUrl)
             prefs.setDeepseekModel(s.deepseekModel)
+            if (urlChanged) {
+                repository.clearAllLocalData()
+                repository.refreshEpisodes()
+            }
             _state.update { it.copy(isSaving = false, savedSuccess = true) }
         }
     }

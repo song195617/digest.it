@@ -59,4 +59,13 @@ interface EpisodeDao {
 
     @Query("DELETE FROM summaries WHERE episodeId = :episodeId")
     suspend fun deleteSummary(episodeId: String)
+
+    @Query("DELETE FROM episodes")
+    suspend fun deleteAllEpisodes()
+
+    @Query("DELETE FROM transcripts")
+    suspend fun deleteAllTranscripts()
+
+    @Query("DELETE FROM summaries")
+    suspend fun deleteAllSummaries()
 }
