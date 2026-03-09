@@ -2,6 +2,8 @@ package com.digestit.data.local.db
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.digestit.data.local.db.dao.ChatDao
 import com.digestit.data.local.db.dao.EpisodeDao
 import com.digestit.data.local.db.entity.ChatMessageEntity
@@ -9,9 +11,15 @@ import com.digestit.data.local.db.entity.EpisodeEntity
 import com.digestit.data.local.db.entity.SummaryEntity
 import com.digestit.data.local.db.entity.TranscriptEntity
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE episodes ADD COLUMN audioUrl TEXT")
+    }
+}
+
 @Database(
     entities = [EpisodeEntity::class, TranscriptEntity::class, SummaryEntity::class, ChatMessageEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

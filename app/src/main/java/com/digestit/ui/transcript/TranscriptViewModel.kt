@@ -2,6 +2,7 @@ package com.digestit.ui.transcript
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.digestit.data.local.datastore.UserPreferencesDataStore
 import com.digestit.domain.model.Transcript
 import com.digestit.domain.model.TranscriptSegment
 import com.digestit.domain.repository.IEpisodeRepository
@@ -9,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,12 +24,14 @@ data class TranscriptState(
     val currentMatchPosition: Int = 0,
     val highlightedSegmentStartMs: Long? = null,
     val pendingScrollTargetStartMs: Long? = null,
+    val audioUrl: String? = null,
     val error: String? = null
 )
 
 @HiltViewModel
 class TranscriptViewModel @Inject constructor(
-    private val repository: IEpisodeRepository
+    private val repository: IEpisodeRepository,
+    private val prefs: UserPreferencesDataStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TranscriptState())
@@ -38,11 +42,17 @@ class TranscriptViewModel @Inject constructor(
             _state.update { it.copy(isLoading = true) }
             repository.markEpisodeOpened(episodeId)
             val transcript = repository.getTranscript(episodeId)
+            val episode = repository.getEpisode(episodeId)
+            val audioUrl = episode?.audioUrl?.let { path ->
+                val base = prefs.backendUrl.first().trimEnd('/')
+                "$base$path"
+            }
             _state.update {
                 it.copy(
                     isLoading = false,
                     transcript = transcript,
                     visibleSegments = transcript?.segments ?: emptyList(),
+                    audioUrl = audioUrl,
                     error = if (transcript == null) "转录文本未找到" else null,
                 )
             }

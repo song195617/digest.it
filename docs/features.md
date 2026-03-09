@@ -1,6 +1,6 @@
 # 功能状态注册表
 
-最后更新：2026-03-09
+最后更新：2026-03-09（Sprint 2 音频播放 + Markdown渲染 + 时间戳修复）
 
 ---
 
@@ -10,8 +10,8 @@
 |------|------|---------|------|
 | HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 刷新时偶发错误（EpisodeRepository）|
 | ProcessingScreen | ✅ 🐛 | ui/processing/ProcessingScreen.kt | 失败后无返回/重试按钮 |
-| SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 4个Tab：Overview/KeyPoints/Topics/Highlights |
-| TranscriptScreen | ✅ 🐛 | ui/transcript/TranscriptScreen.kt | 时间戳 Chip 点击无效 |
+| SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 详细摘要 Tab 支持 Markdown 渲染 |
+| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转 + 底部音频播放栏 |
 | ChatScreen | ✅ 🐛 | ui/chat/ChatScreen.kt | 无清空聊天 UI 入口 |
 | SettingsScreen | ✅ 📋 | ui/settings/SettingsScreen.kt | 缺少测试连接功能 |
 | ShareActivity | ✅ | — | 系统分享意图处理 |
@@ -29,7 +29,8 @@
 | DELETE /v1/episodes/{id} | ✅ | api/v1/endpoints/episodes.py | 删除并 revoke Celery 任务 |
 | POST /v1/episodes/{id}/retry | ✅ | api/v1/endpoints/episodes.py | 重新处理失败剧集 |
 | GET /v1/episodes/{id}/transcript | ✅ | api/v1/endpoints/episodes.py | 获取转录文本 |
-| GET /v1/episodes/{id}/summary | ✅ | api/v1/endpoints/episodes.py | 获取摘要 |
+| GET /v1/episodes/{id}/summary | ✅ | api/v1/endpoints/episodes.py | 获取摘要；highlights 时间戳已修复（带时间戳转录） |
+| GET /v1/episodes/{id}/audio | ✅ | api/v1/endpoints/episodes.py | 流式返回音频文件；EpisodeResponse 含 audio_url |
 | WS /v1/ws/chat/{session_id} | ✅ | api/v1/endpoints/chat.py | 流式 AI 聊天 |
 | GET /health | ✅ | api/v1/endpoints/health.py | 健康检查 |
 
@@ -56,9 +57,11 @@
 
 ### Sprint 2 — 体验优化
 
-- 🐛 **[2.1] 时间戳 Chip 点击跳转** → `TranscriptScreen.kt`（中复杂度）
+- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar
 - 📋 **[2.2] 摘要本地缓存** → Room DB 新增 summary 表（中复杂度）
-- 📋 **[2.3] 分享/导出摘要** → SummaryScreen 分享 Intent（低复杂度）
+- ✅ **[2.3] 分享/导出摘要** → SummaryScreen 分享 Intent（已完成）
+- ✅ **[2.x] 摘要 Markdown 渲染** → SummaryScreen FullSummaryContent，mikepenz 渲染库
+- ✅ **[2.x] 精彩片段时间戳修复** → prompts.py + claude/openai_service 使用带时间戳转录
 - 📋 **[2.4] 离线状态横幅** → 全局网络状态监听（中复杂度）
 - 📋 **[2.5] 下拉刷新** → HomeScreen SwipeRefresh（低复杂度）
 - 🐛 **[2.6] 清空聊天 UI 入口** → `ChatScreen.kt`（低复杂度）

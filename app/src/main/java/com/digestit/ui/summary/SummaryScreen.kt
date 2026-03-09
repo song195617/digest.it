@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.digestit.domain.model.Highlight
 import com.digestit.ui.common.formatTimestamp
+import com.mikepenz.markdown.m3.Markdown
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -274,13 +275,7 @@ private fun KeyPointsList(keyPoints: List<String>) {
 @Composable
 private fun FullSummaryContent(fullSummary: String) {
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
-        item {
-            Text(
-                fullSummary,
-                style = MaterialTheme.typography.bodyMedium,
-                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
-            )
-        }
+        item { Markdown(fullSummary) }
     }
 }
 

@@ -119,6 +119,13 @@ dependencies {
     // Security
     implementation(libs.security.crypto)
 
+    // Markdown renderer
+    implementation(libs.markdown.renderer.m3)
+
+    // Media3 (ExoPlayer)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.session)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

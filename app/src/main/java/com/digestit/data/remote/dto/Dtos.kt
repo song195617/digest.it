@@ -44,7 +44,8 @@ data class EpisodeResponse(
     @SerializedName("duration_seconds") val durationSeconds: Int,
     @SerializedName("created_at") val createdAt: String,
     @SerializedName("processing_status") val processingStatus: String,
-    @SerializedName("error_message") val errorMessage: String?
+    @SerializedName("error_message") val errorMessage: String?,
+    @SerializedName("audio_url") val audioUrl: String? = null
 ) {
     fun toDomain() = Episode(
         id = id,
@@ -56,7 +57,8 @@ data class EpisodeResponse(
         durationSeconds = durationSeconds,
         createdAt = Instant.parse(createdAt),
         processingStatus = ProcessingStatus.valueOf(processingStatus),
-        errorMessage = errorMessage
+        errorMessage = errorMessage,
+        audioUrl = audioUrl
     )
 }
 

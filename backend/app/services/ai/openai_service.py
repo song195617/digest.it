@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 from openai import AsyncOpenAI
 from app.services.ai.base import AIService
 from app.services.ai.provider_config import ProviderConfig
-from app.services.ai._utils import build_chat_context, truncate_transcript
+from app.services.ai._utils import build_chat_context, truncate_transcript, format_transcript_with_timestamps
 from app.services.ai.prompts import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_TEMPLATE, CHAT_SYSTEM_TEMPLATE
 
 
@@ -27,7 +27,8 @@ class OpenAICompatibleService(AIService):
         full_text: str,
         segments: list[dict],
     ) -> dict:
-        transcript = truncate_transcript(full_text)
+        timestamped = format_transcript_with_timestamps(segments)
+        transcript = truncate_transcript(timestamped if timestamped.strip() else full_text)
         user_message = SUMMARY_USER_TEMPLATE.format(
             title=title,
             author=author,

@@ -2,7 +2,9 @@ import json
 import shutil
 import uuid
 from pathlib import Path
+from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.api.v1.endpoints.jobs import JobStatusResponse, STATUS_PROGRESS, _job_to_response
@@ -27,6 +29,7 @@ class EpisodeResponse(BaseModel):
     created_at: str
     processing_status: str
     error_message: str | None
+    audio_url: Optional[str] = None
 
 
 class SegmentDto(BaseModel):
@@ -59,6 +62,11 @@ class SummaryResponse(BaseModel):
 
 
 def _episode_to_response(ep: Episode) -> EpisodeResponse:
+    audio_url = (
+        f"/api/v1/episodes/{ep.id}/audio"
+        if ep.audio_file_path and Path(ep.audio_file_path).exists()
+        else None
+    )
     return EpisodeResponse(
         id=ep.id,
         platform=ep.platform.value,
@@ -70,6 +78,7 @@ def _episode_to_response(ep: Episode) -> EpisodeResponse:
         created_at=ep.created_at.isoformat(),
         processing_status=ep.processing_status.value,
         error_message=ep.error_message,
+        audio_url=audio_url,
     )
 
 
@@ -203,3 +212,14 @@ async def get_summary(episode_id: str, db: Session = Depends(get_db)):
         ],
         full_summary=summary.full_summary,
     )
+
+
+@router.get("/{episode_id}/audio")
+async def stream_audio(episode_id: str, db: Session = Depends(get_db)):
+    ep = db.query(Episode).filter(Episode.id == episode_id).first()
+    if not ep or not ep.audio_file_path:
+        raise HTTPException(status_code=404, detail="Audio not available")
+    path = Path(ep.audio_file_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    return FileResponse(path, media_type="audio/mpeg", filename=f"{episode_id}.mp3")

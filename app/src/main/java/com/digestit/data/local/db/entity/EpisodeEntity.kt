@@ -21,6 +21,7 @@ data class EpisodeEntity(
     val errorMessage: String?,
     val isFavorite: Boolean = false,
     val lastOpenedAt: Long? = null,
+    val audioUrl: String? = null,
 ) {
     fun toDomain() = Episode(
         id = id,
@@ -35,6 +36,7 @@ data class EpisodeEntity(
         errorMessage = errorMessage,
         isFavorite = isFavorite,
         lastOpenedAt = lastOpenedAt?.let(Instant::ofEpochMilli),
+        audioUrl = audioUrl,
     )
 
     companion object {
@@ -51,6 +53,7 @@ data class EpisodeEntity(
             errorMessage = e.errorMessage,
             isFavorite = e.isFavorite,
             lastOpenedAt = e.lastOpenedAt?.toEpochMilli(),
+            audioUrl = e.audioUrl,
         )
     }
 }

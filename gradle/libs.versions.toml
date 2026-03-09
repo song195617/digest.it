@@ -20,6 +20,8 @@ workManager = "2.9.1"
 coil = "2.7.0"
 gson = "2.11.0"
 securityCrypto = "1.0.0"
+markdownRenderer = "0.27.0"
+media3 = "1.4.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -75,6 +77,13 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 
 # Security
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+
+# Markdown renderer
+markdown-renderer-m3 = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
+
+# Media3 (ExoPlayer)
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

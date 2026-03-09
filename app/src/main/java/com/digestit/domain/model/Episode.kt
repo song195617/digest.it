@@ -30,6 +30,7 @@ data class Episode(
     val errorMessage: String? = null,
     val isFavorite: Boolean = false,
     val lastOpenedAt: Instant? = null,
+    val audioUrl: String? = null,
 )
 
 data class ProcessingJob(

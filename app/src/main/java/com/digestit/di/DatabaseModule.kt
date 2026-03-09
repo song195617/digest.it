@@ -3,6 +3,7 @@ package com.digestit.di
 import android.content.Context
 import androidx.room.Room
 import com.digestit.data.local.db.AppDatabase
+import com.digestit.data.local.db.MIGRATION_2_3
 import com.digestit.data.local.db.dao.ChatDao
 import com.digestit.data.local.db.dao.EpisodeDao
 import dagger.Module
@@ -20,6 +21,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "digestit.db")
+            .addMigrations(MIGRATION_2_3)
             .fallbackToDestructiveMigration()
             .build()
 
