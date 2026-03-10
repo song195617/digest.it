@@ -36,10 +36,17 @@ class TranscriptViewModel @Inject constructor(
     private val audioPlayerManager: AudioPlayerManager,
 ) : ViewModel() {
 
+    private data class LoadedAudioSource(
+        val url: String,
+        val title: String,
+        val author: String
+    )
+
     private val _state = MutableStateFlow(TranscriptState())
     val state: StateFlow<TranscriptState> = _state.asStateFlow()
 
     val playerState: StateFlow<AudioPlayerState> = audioPlayerManager.state
+    private var loadedAudioSource: LoadedAudioSource? = null
 
     fun load(episodeId: String, initialTimestampMs: Long?) {
         viewModelScope.launch {
@@ -59,10 +66,17 @@ class TranscriptViewModel @Inject constructor(
                     error = if (transcript == null) "转录文本未找到" else null,
                 )
             }
-            if (audioUrl != null && episode != null) {
-                audioPlayerManager.setAudioSource(audioUrl, episode.title, episode.author)
+            if (audioUrl != null) {
+                loadedAudioSource = LoadedAudioSource(audioUrl, episode.title, episode.author)
+                if (initialTimestampMs != null) {
+                    audioPlayerManager.playFrom(audioUrl, episode.title, episode.author, initialTimestampMs)
+                } else {
+                    audioPlayerManager.setAudioSource(audioUrl, episode.title, episode.author)
+                }
+            } else {
+                loadedAudioSource = null
             }
-            initialTimestampMs?.let { focusTimestamp(it) }
+            initialTimestampMs?.let { highlightTimestamp(it) }
         }
     }
 
@@ -87,18 +101,16 @@ class TranscriptViewModel @Inject constructor(
     }
 
     fun focusTimestamp(timestampMs: Long) {
-        val transcript = _state.value.transcript ?: return
-        val target = transcript.segments.firstOrNull { segment ->
-            timestampMs in segment.startMs..segment.endMs
-        } ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - timestampMs) }
-        _state.update {
-            it.copy(
-                highlightedSegmentStartMs = target?.startMs,
-                pendingScrollTargetStartMs = target?.startMs,
-            )
+        highlightTimestamp(timestampMs)
+        val source = loadedAudioSource
+        if (source != null) {
+            viewModelScope.launch {
+                audioPlayerManager.playFrom(source.url, source.title, source.author, timestampMs)
+            }
+        } else {
+            audioPlayerManager.seekTo(timestampMs)
+            audioPlayerManager.play()
         }
-        audioPlayerManager.seekTo(timestampMs)
-        audioPlayerManager.play()
     }
 
     fun play() = audioPlayerManager.play()
@@ -139,5 +151,18 @@ class TranscriptViewModel @Inject constructor(
 
     fun onPendingScrollHandled() {
         _state.update { it.copy(pendingScrollTargetStartMs = null) }
+    }
+
+    private fun highlightTimestamp(timestampMs: Long) {
+        val transcript = _state.value.transcript ?: return
+        val target = transcript.segments.firstOrNull { segment ->
+            timestampMs in segment.startMs..segment.endMs
+        } ?: transcript.segments.minByOrNull { kotlin.math.abs(it.startMs - timestampMs) }
+        _state.update {
+            it.copy(
+                highlightedSegmentStartMs = target?.startMs,
+                pendingScrollTargetStartMs = target?.startMs,
+            )
+        }
     }
 }

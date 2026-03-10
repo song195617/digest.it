@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.Player
 import com.digestit.domain.model.TranscriptSegment
 import com.digestit.media.AudioPlayerState
 import com.digestit.ui.common.formatTimestamp
@@ -116,7 +117,7 @@ fun TranscriptScreen(
             }
         },
         bottomBar = {
-            if (playerState.isConnected && playerState.currentUrl != null) {
+            if (playerState.hasMediaItem || playerState.currentUrl != null) {
                 MusicPlayerBar(
                     playerState = playerState,
                     onPlayPause = { if (playerState.isPlaying) viewModel.pause() else viewModel.play() },
@@ -182,6 +183,8 @@ private fun MusicPlayerBar(
     modifier: Modifier = Modifier
 ) {
     val speedSteps = listOf(1.0f, 1.5f, 2.0f, 0.75f)
+    val controlsEnabled = playerState.canPlay
+    val seekEnabled = playerState.canSeek && playerState.durationMs > 0L
 
     var isDragging by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableFloatStateOf(0f) }
@@ -219,6 +222,21 @@ private fun MusicPlayerBar(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
+            val playerMessage = when {
+                !playerState.errorMessage.isNullOrBlank() -> playerState.errorMessage
+                playerState.playbackState == Player.STATE_BUFFERING -> "音频加载中..."
+                !playerState.isConnected -> "正在连接播放器..."
+                !controlsEnabled -> "播放器准备中..."
+                else -> null
+            }
+            if (playerMessage != null) {
+                Text(
+                    text = playerMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
             // Slider with timestamps
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -231,6 +249,7 @@ private fun MusicPlayerBar(
                     onValueChange = { sliderValue = it; isDragging = true },
                     onValueChangeFinished = { onSeekTo(sliderValue.toLong()); isDragging = false },
                     valueRange = 0f..playerState.durationMs.toFloat().coerceAtLeast(1f),
+                    enabled = seekEnabled,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
                 )
                 Text(
@@ -245,11 +264,12 @@ private fun MusicPlayerBar(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onSkipBackward) {
+                IconButton(onClick = onSkipBackward, enabled = seekEnabled) {
                     Icon(Icons.Default.SkipPrevious, contentDescription = "后退15秒")
                 }
                 FilledIconButton(
                     onClick = onPlayPause,
+                    enabled = controlsEnabled,
                     modifier = Modifier.size(56.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary
@@ -261,13 +281,14 @@ private fun MusicPlayerBar(
                         modifier = Modifier.size(32.dp)
                     )
                 }
-                IconButton(onClick = onSkipForward) {
+                IconButton(onClick = onSkipForward, enabled = seekEnabled) {
                     Icon(Icons.Default.SkipNext, contentDescription = "前进15秒")
                 }
                 val currentSpeedIndex = speedSteps.indexOf(playerState.playbackSpeed).takeIf { it >= 0 } ?: 0
                 val nextSpeedIndex = (currentSpeedIndex + 1) % speedSteps.size
                 AssistChip(
                     onClick = { onSpeedChange(speedSteps[nextSpeedIndex]) },
+                    enabled = controlsEnabled,
                     label = {
                         val speed = playerState.playbackSpeed
                         val speedLabel = if (speed == speed.toLong().toFloat()) "${speed.toLong()}x" else "${speed}x"
