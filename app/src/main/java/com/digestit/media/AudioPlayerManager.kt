@@ -37,6 +37,7 @@ data class AudioPlayerState(
     val hasMediaItem: Boolean = false,
     val canPlay: Boolean = false,
     val canSeek: Boolean = false,
+    val currentEpisodeId: String? = null,
     val currentUrl: String? = null,
     val episodeTitle: String = "",
     val author: String = "",
@@ -60,7 +61,12 @@ class AudioPlayerManager @Inject constructor(
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var pollingJob: Job? = null
 
-    private data class PendingSource(val url: String, val title: String, val author: String)
+    private data class PendingSource(
+        val episodeId: String,
+        val url: String,
+        val title: String,
+        val author: String
+    )
 
     @Volatile
     private var pendingSource: PendingSource? = null
@@ -103,12 +109,19 @@ class AudioPlayerManager @Inject constructor(
             startPolling()
 
             val rememberedSource = pendingSource ?: _state.value.currentUrl?.let { url ->
-                PendingSource(url, _state.value.episodeTitle, _state.value.author)
+                val episodeId = _state.value.currentEpisodeId ?: return@let null
+                PendingSource(episodeId, url, _state.value.episodeTitle, _state.value.author)
             }
             pendingSource = null
 
             if (ctrl.currentMediaItem == null && rememberedSource != null) {
-                applySource(ctrl, rememberedSource.url, rememberedSource.title, rememberedSource.author)
+                applySource(
+                    ctrl,
+                    rememberedSource.episodeId,
+                    rememberedSource.url,
+                    rememberedSource.title,
+                    rememberedSource.author
+                )
             } else {
                 syncState(ctrl)
             }
@@ -176,18 +189,19 @@ class AudioPlayerManager @Inject constructor(
         }
     }
 
-    suspend fun setAudioSource(url: String, title: String, author: String) {
+    suspend fun setAudioSource(episodeId: String, url: String, title: String, author: String) {
         withContext(Dispatchers.Main) {
             val ctrl = controller
             if (ctrl == null) {
-                pendingSource = PendingSource(url, title, author)
-                rememberSource(url, title, author)
+                pendingSource = PendingSource(episodeId, url, title, author)
+                rememberSource(episodeId, url, title, author)
                 return@withContext
             }
 
-            if (controllerHasSource(ctrl, url)) {
+            if (controllerHasSource(ctrl, episodeId, url)) {
                 _state.update {
                     it.copy(
+                        currentEpisodeId = episodeId,
                         currentUrl = url,
                         episodeTitle = title,
                         author = author,
@@ -199,29 +213,36 @@ class AudioPlayerManager @Inject constructor(
                 return@withContext
             }
 
-            applySource(ctrl, url, title, author)
+            applySource(ctrl, episodeId, url, title, author)
         }
     }
 
-    suspend fun playFrom(url: String, title: String, author: String, positionMs: Long) {
+    suspend fun playFrom(
+        episodeId: String,
+        url: String,
+        title: String,
+        author: String,
+        positionMs: Long
+    ) {
         withContext(Dispatchers.Main) {
             pendingSeekMs = positionMs
             pendingPlay = true
 
             val ctrl = controller
             if (ctrl == null) {
-                pendingSource = PendingSource(url, title, author)
-                rememberSource(url, title, author, positionMs)
+                pendingSource = PendingSource(episodeId, url, title, author)
+                rememberSource(episodeId, url, title, author, positionMs)
                 return@withContext
             }
 
-            if (!controllerHasSource(ctrl, url) || ctrl.currentMediaItem == null) {
-                applySource(ctrl, url, title, author, positionMs)
+            if (!controllerHasSource(ctrl, episodeId, url) || ctrl.currentMediaItem == null) {
+                applySource(ctrl, episodeId, url, title, author, positionMs)
                 return@withContext
             }
 
             _state.update {
                 it.copy(
+                    currentEpisodeId = episodeId,
                     currentUrl = url,
                     episodeTitle = title,
                     author = author,
@@ -241,11 +262,19 @@ class AudioPlayerManager @Inject constructor(
         }
         if (ctrl.currentMediaItem == null) {
             val source = _state.value.currentUrl?.let { url ->
-                PendingSource(url, _state.value.episodeTitle, _state.value.author)
+                val episodeId = _state.value.currentEpisodeId ?: return@let null
+                PendingSource(episodeId, url, _state.value.episodeTitle, _state.value.author)
             }
             if (source != null) {
                 pendingPlay = true
-                applySource(ctrl, source.url, source.title, source.author, _state.value.positionMs)
+                applySource(
+                    ctrl,
+                    source.episodeId,
+                    source.url,
+                    source.title,
+                    source.author,
+                    _state.value.positionMs
+                )
             }
             return
         }
@@ -279,11 +308,19 @@ class AudioPlayerManager @Inject constructor(
         }
         if (ctrl.currentMediaItem == null) {
             val source = _state.value.currentUrl?.let { url ->
-                PendingSource(url, _state.value.episodeTitle, _state.value.author)
+                val episodeId = _state.value.currentEpisodeId ?: return@let null
+                PendingSource(episodeId, url, _state.value.episodeTitle, _state.value.author)
             }
             if (source != null) {
                 pendingSeekMs = positionMs
-                applySource(ctrl, source.url, source.title, source.author, positionMs)
+                applySource(
+                    ctrl,
+                    source.episodeId,
+                    source.url,
+                    source.title,
+                    source.author,
+                    positionMs
+                )
                 return
             }
         }
@@ -325,9 +362,16 @@ class AudioPlayerManager @Inject constructor(
         controller?.let(::syncState) ?: _state.update { it.copy(playbackSpeed = speed) }
     }
 
-    private fun rememberSource(url: String, title: String, author: String, positionMs: Long = 0L) {
+    private fun rememberSource(
+        episodeId: String,
+        url: String,
+        title: String,
+        author: String,
+        positionMs: Long = 0L
+    ) {
         _state.update {
             it.copy(
+                currentEpisodeId = episodeId,
                 currentUrl = url,
                 episodeTitle = title,
                 author = author,
@@ -344,14 +388,16 @@ class AudioPlayerManager @Inject constructor(
 
     private fun applySource(
         ctrl: MediaController,
+        episodeId: String,
         url: String,
         title: String,
         author: String,
         initialPositionMs: Long = 0L
     ) {
-        Log.d(TAG, "Applying media source: $url")
-        rememberSource(url, title, author, initialPositionMs)
+        Log.d(TAG, "Applying media source: episodeId=$episodeId url=$url")
+        rememberSource(episodeId, url, title, author, initialPositionMs)
         val mediaItem = MediaItem.Builder()
+            .setMediaId(episodeId)
             .setUri(url)
             .setMediaMetadata(
                 MediaMetadata.Builder()
@@ -365,8 +411,10 @@ class AudioPlayerManager @Inject constructor(
         syncState(ctrl)
     }
 
-    private fun controllerHasSource(ctrl: MediaController, url: String): Boolean {
-        return ctrl.currentMediaItem?.localConfiguration?.uri?.toString() == url
+    private fun controllerHasSource(ctrl: MediaController, episodeId: String, url: String): Boolean {
+        val currentEpisodeId = ctrl.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() } ?: _state.value.currentEpisodeId
+        val currentUrl = ctrl.currentMediaItem?.localConfiguration?.uri?.toString() ?: _state.value.currentUrl
+        return currentEpisodeId == episodeId && currentUrl == url
     }
 
     private fun flushPendingActions(ctrl: MediaController) {
@@ -413,6 +461,8 @@ class AudioPlayerManager @Inject constructor(
                 hasMediaItem = hasMediaItem,
                 canPlay = hasMediaItem && ctrl.isCommandAvailable(Player.COMMAND_PLAY_PAUSE),
                 canSeek = hasMediaItem && ctrl.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
+                currentEpisodeId = ctrl.currentMediaItem?.mediaId?.takeIf { mediaId -> mediaId.isNotBlank() }
+                    ?: it.currentEpisodeId,
                 currentUrl = ctrl.currentMediaItem?.localConfiguration?.uri?.toString() ?: it.currentUrl,
                 episodeTitle = ctrl.mediaMetadata.title?.toString() ?: it.episodeTitle,
                 author = ctrl.mediaMetadata.artist?.toString() ?: it.author,

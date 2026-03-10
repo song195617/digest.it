@@ -38,6 +38,7 @@ class TranscriptViewModel @Inject constructor(
 ) : ViewModel() {
 
     private data class LoadedAudioSource(
+        val episodeId: String,
         val url: String,
         val title: String,
         val author: String
@@ -48,9 +49,12 @@ class TranscriptViewModel @Inject constructor(
 
     val playerState: StateFlow<AudioPlayerState> = audioPlayerManager.state
     private var loadedAudioSource: LoadedAudioSource? = null
+    private var currentEpisodeId: String? = null
 
     fun load(episodeId: String, initialTimestampMs: Long?) {
         viewModelScope.launch {
+            currentEpisodeId = episodeId
+            loadedAudioSource = null
             _state.update { it.copy(isLoading = true) }
             repository.markEpisodeOpened(episodeId)
             val transcript = repository.getTranscript(episodeId)
@@ -70,11 +74,17 @@ class TranscriptViewModel @Inject constructor(
                 )
             }
             if (audioUrl != null) {
-                loadedAudioSource = LoadedAudioSource(audioUrl, episodeTitle, episodeAuthor)
+                loadedAudioSource = LoadedAudioSource(episodeId, audioUrl, episodeTitle, episodeAuthor)
                 if (initialTimestampMs != null) {
-                    audioPlayerManager.playFrom(audioUrl, episodeTitle, episodeAuthor, initialTimestampMs)
+                    audioPlayerManager.playFrom(
+                        episodeId,
+                        audioUrl,
+                        episodeTitle,
+                        episodeAuthor,
+                        initialTimestampMs
+                    )
                 } else {
-                    audioPlayerManager.setAudioSource(audioUrl, episodeTitle, episodeAuthor)
+                    audioPlayerManager.setAudioSource(episodeId, audioUrl, episodeTitle, episodeAuthor)
                 }
             } else {
                 loadedAudioSource = null
@@ -108,9 +118,15 @@ class TranscriptViewModel @Inject constructor(
         val source = loadedAudioSource
         if (source != null) {
             viewModelScope.launch {
-                audioPlayerManager.playFrom(source.url, source.title, source.author, timestampMs)
+                audioPlayerManager.playFrom(
+                    source.episodeId,
+                    source.url,
+                    source.title,
+                    source.author,
+                    timestampMs
+                )
             }
-        } else {
+        } else if (playerState.value.currentEpisodeId == currentEpisodeId) {
             audioPlayerManager.seekTo(timestampMs)
             audioPlayerManager.play()
         }

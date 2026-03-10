@@ -13,7 +13,7 @@
 | SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 详细摘要 Tab 支持 Markdown 渲染 |
 | TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转；播放器已提升为全局底部播放栏 |
 | ChatScreen | ✅ 🐛 | ui/chat/ChatScreen.kt | 无清空聊天 UI 入口 |
-| SettingsScreen | ✅ | ui/settings/SettingsScreen.kt | 支持后端连接测试 + 音频缓存大小查看/清理 |
+| SettingsScreen | ✅ | ui/settings/SettingsScreen.kt | 支持后端连接测试 + 音频缓存大小查看/清理，不显示全局播放器 |
 | ShareActivity | ✅ | — | 系统分享意图处理 |
 
 ---
@@ -56,7 +56,7 @@
 
 ### Sprint 2 — 体验优化
 
-- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.5 修复后端 `audio_url` 路径错误，并兼容旧 `/api/v1` 音频地址）
+- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.5 修复后端 `audio_url` 路径错误，并兼容旧 `/api/v1` 音频地址；v1.3.6+ 补上跨 episode 时间点点击强制切源）
 - ✅ **[2.x] 音频 Range seek 优化** → `episodes.py` 支持 HTTP Range，拖动到远处不再退化为整段顺序读取
 - ✅ **[2.x] 音频本地缓存** → Media3 `SimpleCache` + SettingsScreen 缓存占用显示，最大 1GB
 - ✅ **[2.x] 全局底部播放器** → `AppNavigation.kt` 全局承载播放栏，摘要/聊天/转录外也可控播放
