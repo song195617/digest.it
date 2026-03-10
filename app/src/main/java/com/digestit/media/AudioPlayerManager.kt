@@ -48,6 +48,9 @@ class AudioPlayerManager @Inject constructor(
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var pollingJob: Job? = null
 
+    private data class PendingSource(val url: String, val title: String, val author: String)
+    @Volatile private var pendingSource: PendingSource? = null
+
     fun connect() {
         val sessionToken = SessionToken(
             context,
@@ -55,10 +58,15 @@ class AudioPlayerManager @Inject constructor(
         )
         controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
         controllerFuture?.addListener({
-            controller = controllerFuture?.get()
-            controller?.addListener(playerListener)
+            val ctrl = controllerFuture?.get() ?: return@addListener
+            controller = ctrl
+            ctrl.addListener(playerListener)
             _state.update { it.copy(isConnected = true) }
             startPolling()
+            pendingSource?.let { pending ->
+                pendingSource = null
+                applySource(ctrl, pending.url, pending.title, pending.author)
+            }
         }, MoreExecutors.directExecutor())
     }
 
@@ -92,28 +100,37 @@ class AudioPlayerManager @Inject constructor(
 
     suspend fun setAudioSource(url: String, title: String, author: String) {
         withContext(Dispatchers.Main) {
-            val ctrl = controller ?: return@withContext
             if (_state.value.currentUrl == url) return@withContext
-            val mediaItem = MediaItem.Builder()
-                .setUri(url)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(title)
-                        .setArtist(author)
-                        .build()
-                )
-                .build()
-            ctrl.setMediaItem(mediaItem)
-            ctrl.prepare()
-            _state.update {
-                it.copy(
-                    currentUrl = url,
-                    episodeTitle = title,
-                    author = author,
-                    durationMs = 0L,
-                    positionMs = 0L
-                )
+            val ctrl = controller
+            if (ctrl == null) {
+                pendingSource = PendingSource(url, title, author)
+                _state.update { it.copy(episodeTitle = title, author = author, currentUrl = url) }
+                return@withContext
             }
+            applySource(ctrl, url, title, author)
+        }
+    }
+
+    private fun applySource(ctrl: MediaController, url: String, title: String, author: String) {
+        val mediaItem = MediaItem.Builder()
+            .setUri(url)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setArtist(author)
+                    .build()
+            )
+            .build()
+        ctrl.setMediaItem(mediaItem)
+        ctrl.prepare()
+        _state.update {
+            it.copy(
+                currentUrl = url,
+                episodeTitle = title,
+                author = author,
+                durationMs = 0L,
+                positionMs = 0L
+            )
         }
     }
 

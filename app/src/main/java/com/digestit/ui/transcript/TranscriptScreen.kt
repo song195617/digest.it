@@ -116,7 +116,7 @@ fun TranscriptScreen(
             }
         },
         bottomBar = {
-            if (playerState.isConnected && playerState.durationMs > 0) {
+            if (playerState.isConnected && playerState.currentUrl != null) {
                 MusicPlayerBar(
                     playerState = playerState,
                     onPlayPause = { if (playerState.isPlaying) viewModel.pause() else viewModel.play() },
