@@ -50,6 +50,8 @@ class AudioPlayerManager @Inject constructor(
 
     private data class PendingSource(val url: String, val title: String, val author: String)
     @Volatile private var pendingSource: PendingSource? = null
+    @Volatile private var pendingSeekMs: Long? = null
+    @Volatile private var pendingPlay: Boolean = false
 
     fun connect() {
         val sessionToken = SessionToken(
@@ -66,6 +68,14 @@ class AudioPlayerManager @Inject constructor(
             pendingSource?.let { pending ->
                 pendingSource = null
                 applySource(ctrl, pending.url, pending.title, pending.author)
+            }
+            pendingSeekMs?.let { ms ->
+                pendingSeekMs = null
+                ctrl.seekTo(ms)
+            }
+            if (pendingPlay) {
+                pendingPlay = false
+                ctrl.play()
             }
         }, MoreExecutors.directExecutor())
     }
@@ -135,15 +145,24 @@ class AudioPlayerManager @Inject constructor(
     }
 
     fun play() {
-        controller?.play()
+        val ctrl = controller
+        if (ctrl == null) { pendingPlay = true; return }
+        ctrl.play()
     }
 
     fun pause() {
+        pendingPlay = false
         controller?.pause()
     }
 
     fun seekTo(positionMs: Long) {
-        controller?.seekTo(positionMs)
+        val ctrl = controller
+        if (ctrl == null) {
+            pendingSeekMs = positionMs
+            _state.update { it.copy(positionMs = positionMs) }
+            return
+        }
+        ctrl.seekTo(positionMs)
         _state.update { it.copy(positionMs = positionMs) }
     }
 
