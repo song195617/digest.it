@@ -2,7 +2,7 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from fastapi.responses import FileResponse
 from starlette.requests import Request
 from app.api.v1.endpoints.episodes import delete_episode, get_episode, list_episodes, stream_audio
@@ -32,6 +32,7 @@ class EpisodesEndpointTests(unittest.TestCase):
                     platform=Platform.BILIBILI,
                     original_url="https://www.bilibili.com/video/BV1xx411c7mD",
                     title="有音频",
+                    cover_url="https://image.example/cover-1.jpg",
                     processing_status=ProcessingStatus.COMPLETED,
                     audio_file_path=str(existing_audio),
                 ))
@@ -62,6 +63,7 @@ class EpisodesEndpointTests(unittest.TestCase):
                     platform=Platform.BILIBILI,
                     original_url="https://www.bilibili.com/video/BV1xx411c7mD",
                     title="可播放节目",
+                    cover_url="https://image.example/cover-1.jpg",
                     processing_status=ProcessingStatus.COMPLETED,
                     audio_file_path=str(audio_path),
                 ))
@@ -70,6 +72,46 @@ class EpisodesEndpointTests(unittest.TestCase):
                 response = asyncio.run(get_episode("episode-1", db))
 
             self.assertEqual(response.audio_url, "/v1/episodes/episode-1/audio")
+
+    def test_list_episodes_backfills_bilibili_metadata_when_title_and_cover_missing(self):
+        with self.session_factory() as db:
+            db.add(Episode(
+                id="episode-1",
+                platform=Platform.BILIBILI,
+                original_url="https://b23.tv/test",
+                title="处理中...",
+                author="",
+                cover_url=None,
+                duration_seconds=0,
+                processing_status=ProcessingStatus.COMPLETED,
+            ))
+            db.commit()
+
+        metadata = {
+            "title": "真实标题",
+            "owner": {"name": "UP主"},
+            "pic": "https://image.example/cover.jpg",
+            "duration": 321,
+        }
+
+        with patch(
+            "app.api.v1.endpoints.episodes.fetch_bilibili_metadata",
+            new=AsyncMock(return_value=metadata),
+        ):
+            with self.session_factory() as db:
+                response = asyncio.run(list_episodes(db))
+
+        self.assertEqual(response[0].title, "真实标题")
+        self.assertEqual(response[0].author, "UP主")
+        self.assertEqual(response[0].cover_url, "https://image.example/cover.jpg")
+        self.assertEqual(response[0].duration_seconds, 321)
+
+        with self.session_factory() as db:
+            updated = db.query(Episode).filter(Episode.id == "episode-1").first()
+            self.assertEqual(updated.title, "真实标题")
+            self.assertEqual(updated.author, "UP主")
+            self.assertEqual(updated.cover_url, "https://image.example/cover.jpg")
+            self.assertEqual(updated.duration_seconds, 321)
 
     def test_stream_audio_returns_file_response(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -82,6 +124,7 @@ class EpisodesEndpointTests(unittest.TestCase):
                     platform=Platform.BILIBILI,
                     original_url="https://www.bilibili.com/video/BV1xx411c7mD",
                     title="可播放节目",
+                    cover_url="https://image.example/cover-1.jpg",
                     processing_status=ProcessingStatus.COMPLETED,
                     audio_file_path=str(audio_path),
                 ))
@@ -105,6 +148,7 @@ class EpisodesEndpointTests(unittest.TestCase):
                     platform=Platform.BILIBILI,
                     original_url="https://www.bilibili.com/video/BV1xx411c7mD",
                     title="可播放节目",
+                    cover_url="https://image.example/cover-1.jpg",
                     processing_status=ProcessingStatus.COMPLETED,
                     audio_file_path=str(audio_path),
                 ))
@@ -128,6 +172,7 @@ class EpisodesEndpointTests(unittest.TestCase):
                     platform=Platform.BILIBILI,
                     original_url="https://www.bilibili.com/video/BV1xx411c7mD",
                     title="处理中…",
+                    cover_url="https://image.example/cover-1.jpg",
                     processing_status=ProcessingStatus.QUEUED,
                 ))
                 db.add(ProcessingJob(

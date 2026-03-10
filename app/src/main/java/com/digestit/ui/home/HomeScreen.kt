@@ -1,7 +1,12 @@
 package com.digestit.ui.home
 
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +16,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -41,25 +48,27 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,6 +80,8 @@ import com.digestit.domain.model.SearchResult
 import com.digestit.domain.model.SearchSourceType
 import com.digestit.ui.common.formatDateTime
 import com.digestit.ui.theme.platformColor
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -289,40 +300,115 @@ private fun DismissibleEpisodeCard(
     onRetry: (() -> Unit)?,
     onToggleFavorite: () -> Unit,
 ) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else {
-                false
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var cardWidthPx by remember { mutableFloatStateOf(0f) }
+    var offsetPx by remember { mutableFloatStateOf(0f) }
+
+    val fallbackRevealPx = with(density) { 112.dp.toPx() }
+    val maxRevealPx = (cardWidthPx / 3f).takeIf { it > 0f } ?: fallbackRevealPx
+    val revealThresholdPx = maxRevealPx * 0.5f
+    val isDeleteActionVisible = offsetPx <= -maxRevealPx * 0.8f
+
+    fun animateOffset(target: Float) {
+        scope.launch {
+            animate(
+                initialValue = offsetPx,
+                targetValue = target,
+                animationSpec = tween(durationMillis = 180)
+            ) { value, _ ->
+                offsetPx = value
             }
         }
-    )
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = false,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.errorContainer),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(end = 20.dp)
-                )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onSizeChanged { size ->
+                cardWidthPx = size.width.toFloat()
+                offsetPx = offsetPx.coerceIn(-size.width / 3f, 0f)
             }
-        }
     ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(MaterialTheme.colorScheme.errorContainer),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.error,
+                shape = CircleShape,
+                modifier = Modifier.padding(end = 20.dp)
+            ) {
+                IconButton(
+                    onClick = { showDeleteConfirm = true },
+                    enabled = isDeleteActionVisible
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "删除",
+                        tint = MaterialTheme.colorScheme.onError
+                    )
+                }
+            }
+        }
+
         EpisodeCard(
             episode = episode,
-            onClick = onClick,
+            onClick = {
+                if (offsetPx < 0f) {
+                    animateOffset(0f)
+                } else {
+                    onClick()
+                }
+            },
             onRetry = onRetry,
             onToggleFavorite = onToggleFavorite,
+            modifier = Modifier
+                .offset { IntOffset(offsetPx.roundToInt(), 0) }
+                .draggable(
+                    orientation = Orientation.Horizontal,
+                    state = rememberDraggableState { delta ->
+                        offsetPx = (offsetPx + delta).coerceIn(-maxRevealPx, 0f)
+                    },
+                    onDragStopped = { velocity ->
+                        val shouldRevealDelete = offsetPx <= -revealThresholdPx || velocity < -1200f
+                        animateOffset(if (shouldRevealDelete) -maxRevealPx else 0f)
+                    }
+                )
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteConfirm = false
+                animateOffset(0f)
+            },
+            title = { Text("确认删除") },
+            text = { Text("删除后将移除该条内容及其本地缓存，是否继续？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                    }
+                ) {
+                    Text("确认删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        animateOffset(0f)
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
         )
     }
 }
@@ -333,10 +419,13 @@ private fun EpisodeCard(
     onClick: () -> Unit,
     onRetry: (() -> Unit)?,
     onToggleFavorite: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val itemPlatformColor = platformColor[episode.platform.name] ?: Color.Gray
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -8,7 +8,7 @@
 
 | 屏幕 | 状态 | 关键文件 | 备注 |
 |------|------|---------|------|
-| HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 刷新时偶发错误（EpisodeRepository）|
+| HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 刷新时偶发错误（EpisodeRepository）；删除改为左滑露出按钮 + 二次确认；B站卡片可回填标题/封面 |
 | ProcessingScreen | ✅ 🐛 | ui/processing/ProcessingScreen.kt | 失败后无返回/重试按钮 |
 | SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 详细摘要 Tab 支持 Markdown 渲染 |
 | TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转；播放器已提升为全局底部播放栏 |

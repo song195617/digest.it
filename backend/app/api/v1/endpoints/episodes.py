@@ -13,6 +13,7 @@ from app.config import settings
 from app.core.celery_app import celery_app
 from app.core.database import get_db
 from app.models.episode import ChatMessage, Episode, ProcessingJob, ProcessingStatus, Summary, Transcript
+from app.services.extractor.bilibili import fetch_bilibili_metadata
 from app.services.ai.provider_config import ProviderConfig
 from app.tasks.helpers import dispatch_extract_job
 
@@ -61,6 +62,50 @@ class SummaryResponse(BaseModel):
     topics: list[str]
     highlights: list[HighlightDto]
     full_summary: str
+
+
+PLACEHOLDER_EPISODE_TITLES = {"", "处理中..."}
+
+
+def _needs_bilibili_metadata_refresh(ep: Episode) -> bool:
+    return ep.platform.value == "BILIBILI" and (
+        ep.title.strip() in PLACEHOLDER_EPISODE_TITLES
+        or not ep.cover_url
+    )
+
+
+async def _hydrate_bilibili_episode_metadata(ep: Episode, db: Session) -> None:
+    if not _needs_bilibili_metadata_refresh(ep):
+        return
+
+    metadata = await fetch_bilibili_metadata(ep.original_url)
+    if not metadata:
+        return
+
+    changed = False
+    title = str(metadata.get("title") or "").strip()
+    if title and ep.title.strip() in PLACEHOLDER_EPISODE_TITLES:
+        ep.title = title
+        changed = True
+
+    author = str((metadata.get("owner") or {}).get("name") or metadata.get("uploader") or "").strip()
+    if author and not ep.author.strip():
+        ep.author = author
+        changed = True
+
+    cover_url = str(metadata.get("pic") or metadata.get("thumbnail") or "").strip()
+    if cover_url and not ep.cover_url:
+        ep.cover_url = cover_url
+        changed = True
+
+    duration = metadata.get("duration")
+    if duration and ep.duration_seconds <= 0:
+        ep.duration_seconds = int(duration)
+        changed = True
+
+    if changed:
+        db.commit()
+        db.refresh(ep)
 
 
 def _episode_to_response(ep: Episode) -> EpisodeResponse:
@@ -122,6 +167,8 @@ def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int]:
 @router.get("", response_model=list[EpisodeResponse])
 async def list_episodes(db: Session = Depends(get_db)):
     episodes = db.query(Episode).order_by(Episode.created_at.desc()).all()
+    for episode in episodes:
+        await _hydrate_bilibili_episode_metadata(episode, db)
     return [_episode_to_response(ep) for ep in episodes]
 
 
@@ -130,6 +177,7 @@ async def get_episode(episode_id: str, db: Session = Depends(get_db)):
     ep = db.query(Episode).filter(Episode.id == episode_id).first()
     if not ep:
         raise HTTPException(status_code=404, detail="Episode not found")
+    await _hydrate_bilibili_episode_metadata(ep, db)
     return _episode_to_response(ep)
 
 
