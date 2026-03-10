@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.models.episode import Base
 
 
-def create_test_client():
+def create_test_session_factory():
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -16,6 +16,11 @@ def create_test_client():
     )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
+    return TestingSessionLocal
+
+
+def create_test_client():
+    TestingSessionLocal = create_test_session_factory()
 
     app = FastAPI()
     app.include_router(api_router)

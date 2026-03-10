@@ -1,14 +1,48 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from fastapi.responses import FileResponse
+from app.api.v1.endpoints.episodes import delete_episode, get_episode, list_episodes, stream_audio
 from app.models.episode import ChatMessage, Episode, Platform, ProcessingJob, ProcessingStatus, Summary, Transcript
-from tests.test_support import create_test_client
+from tests.test_support import create_test_session_factory
 
 
 class EpisodesEndpointTests(unittest.TestCase):
     def setUp(self):
-        self.client, self.session_factory = create_test_client()
+        self.session_factory = create_test_session_factory()
+
+    def test_list_episodes_uses_v1_audio_path_only_when_audio_exists(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            existing_audio = Path(tmp_dir) / "episode-1.mp3"
+            existing_audio.write_text("audio")
+            missing_audio = Path(tmp_dir) / "missing.mp3"
+
+            with self.session_factory() as db:
+                db.add(Episode(
+                    id="episode-1",
+                    platform=Platform.BILIBILI,
+                    original_url="https://www.bilibili.com/video/BV1xx411c7mD",
+                    title="有音频",
+                    processing_status=ProcessingStatus.COMPLETED,
+                    audio_file_path=str(existing_audio),
+                ))
+                db.add(Episode(
+                    id="episode-2",
+                    platform=Platform.XIAOYUZHOU,
+                    original_url="https://www.xiaoyuzhoufm.com/episode/123",
+                    title="音频文件丢失",
+                    processing_status=ProcessingStatus.COMPLETED,
+                    audio_file_path=str(missing_audio),
+                ))
+                db.commit()
+
+                response = asyncio.run(list_episodes(db))
+
+            payload = {item.id: item for item in response}
+            self.assertEqual(payload["episode-1"].audio_url, "/v1/episodes/episode-1/audio")
+            self.assertIsNone(payload["episode-2"].audio_url)
 
     def test_get_episode_uses_v1_audio_path(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -26,10 +60,32 @@ class EpisodesEndpointTests(unittest.TestCase):
                 ))
                 db.commit()
 
-            response = self.client.get("/v1/episodes/episode-1")
+                response = asyncio.run(get_episode("episode-1", db))
 
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["audio_url"], "/v1/episodes/episode-1/audio")
+            self.assertEqual(response.audio_url, "/v1/episodes/episode-1/audio")
+
+    def test_stream_audio_returns_file_response(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            audio_path = Path(tmp_dir) / "episode-1.mp3"
+            audio_path.write_bytes(b"fake-audio")
+
+            with self.session_factory() as db:
+                db.add(Episode(
+                    id="episode-1",
+                    platform=Platform.BILIBILI,
+                    original_url="https://www.bilibili.com/video/BV1xx411c7mD",
+                    title="可播放节目",
+                    processing_status=ProcessingStatus.COMPLETED,
+                    audio_file_path=str(audio_path),
+                ))
+                db.commit()
+
+                response = asyncio.run(stream_audio("episode-1", db))
+
+            self.assertIsInstance(response, FileResponse)
+            self.assertEqual(Path(response.path), audio_path)
+            self.assertEqual(response.media_type, "audio/mpeg")
+            self.assertEqual(response.filename, "episode-1.mp3")
 
     def test_delete_episode_cascades_related_rows_and_temp_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -79,9 +135,10 @@ class EpisodesEndpointTests(unittest.TestCase):
 
             with patch("app.api.v1.endpoints.episodes.settings.audio_tmp_dir", tmp_dir), \
                 patch("app.api.v1.endpoints.episodes.celery_app.control.revoke") as revoke_mock:
-                response = self.client.delete("/v1/episodes/episode-1")
+                with self.session_factory() as db:
+                    response = asyncio.run(delete_episode("episode-1", db))
 
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response, {"ok": True})
             revoke_mock.assert_called_once_with("celery-1", terminate=False)
             self.assertFalse(episode_dir.exists())
 
