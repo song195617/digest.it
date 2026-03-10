@@ -22,7 +22,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.Player
 import com.digestit.media.AudioPlayerState
+import com.digestit.ui.common.EditorialCard
+import com.digestit.ui.common.LabelPill
 import com.digestit.ui.common.formatTimestamp
 
 @Composable
@@ -82,49 +83,67 @@ fun AudioPlayerBar(
         if (!isDragging) sliderValue = playerState.positionMs.toFloat()
     }
 
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        tonalElevation = 8.dp
+    EditorialCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    text = playerState.episodeTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (playerState.author.isNotBlank()) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
-                        text = " · ${playerState.author}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = playerState.episodeTitle,
+                        style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (playerState.author.isNotBlank()) {
+                            Text(
+                                text = playerState.author,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        val playerMessage = when {
+                            !playerState.errorMessage.isNullOrBlank() -> playerState.errorMessage
+                            playerState.playbackState == Player.STATE_BUFFERING -> "音频加载中"
+                            !playerState.isConnected -> "连接播放器中"
+                            !controlsEnabled -> "播放器准备中"
+                            else -> null
+                        }
+                        playerMessage?.let {
+                            LabelPill(
+                                text = it,
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
                 }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            val playerMessage = when {
-                !playerState.errorMessage.isNullOrBlank() -> playerState.errorMessage
-                playerState.playbackState == Player.STATE_BUFFERING -> "音频加载中..."
-                !playerState.isConnected -> "正在连接播放器..."
-                !controlsEnabled -> "播放器准备中..."
-                else -> null
-            }
-            if (playerMessage != null) {
-                Text(
-                    text = playerMessage,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                val currentSpeedIndex = speedSteps.indexOf(playerState.playbackSpeed).takeIf { it >= 0 } ?: 0
+                val nextSpeedIndex = (currentSpeedIndex + 1) % speedSteps.size
+                AssistChip(
+                    onClick = { onSpeedChange(speedSteps[nextSpeedIndex]) },
+                    enabled = controlsEnabled,
+                    label = {
+                        val speed = playerState.playbackSpeed
+                        val speedLabel = if (speed == speed.toLong().toFloat()) "${speed.toLong()}x" else "${speed}x"
+                        Text(text = speedLabel, style = MaterialTheme.typography.labelMedium)
+                    },
                 )
-                Spacer(modifier = Modifier.height(4.dp))
             }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     formatTimestamp(playerState.positionMs),
@@ -133,8 +152,14 @@ fun AudioPlayerBar(
                 )
                 Slider(
                     value = sliderValue,
-                    onValueChange = { sliderValue = it; isDragging = true },
-                    onValueChangeFinished = { onSeekTo(sliderValue.toLong()); isDragging = false },
+                    onValueChange = {
+                        sliderValue = it
+                        isDragging = true
+                    },
+                    onValueChangeFinished = {
+                        onSeekTo(sliderValue.toLong())
+                        isDragging = false
+                    },
                     valueRange = 0f..playerState.durationMs.toFloat().coerceAtLeast(1f),
                     enabled = seekEnabled,
                     modifier = Modifier
@@ -147,6 +172,7 @@ fun AudioPlayerBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -158,13 +184,13 @@ fun AudioPlayerBar(
                 FilledIconButton(
                     onClick = onPlayPause,
                     enabled = controlsEnabled,
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(58.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
                     Icon(
-                        if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        imageVector = if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (playerState.isPlaying) "暂停" else "播放",
                         modifier = Modifier.size(32.dp)
                     )
@@ -172,18 +198,6 @@ fun AudioPlayerBar(
                 IconButton(onClick = onSkipForward, enabled = seekEnabled) {
                     Icon(Icons.Default.SkipNext, contentDescription = "前进15秒")
                 }
-                val currentSpeedIndex = speedSteps.indexOf(playerState.playbackSpeed).takeIf { it >= 0 } ?: 0
-                val nextSpeedIndex = (currentSpeedIndex + 1) % speedSteps.size
-                AssistChip(
-                    onClick = { onSpeedChange(speedSteps[nextSpeedIndex]) },
-                    enabled = controlsEnabled,
-                    label = {
-                        val speed = playerState.playbackSpeed
-                        val speedLabel = if (speed == speed.toLong().toFloat()) "${speed.toLong()}x" else "${speed}x"
-                        Text(text = speedLabel, style = MaterialTheme.typography.labelMedium)
-                    },
-                    modifier = Modifier.padding(start = 8.dp)
-                )
             }
         }
     }

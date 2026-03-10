@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +31,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.digestit.ui.common.AdaptiveColumns
+import com.digestit.ui.common.EditorialCard
+import com.digestit.ui.common.ScreenContentFrame
+import com.digestit.ui.common.SectionHeader
 import kotlin.math.ln
 import kotlin.math.pow
 
@@ -40,6 +45,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val widthSize = com.digestit.ui.common.rememberAppWidthSize()
 
     LaunchedEffect(state.savedSuccess) {
         if (state.savedSuccess) viewModel.onSavedSuccessConsumed()
@@ -57,23 +63,72 @@ fun SettingsScreen(
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            EffectiveSettingsCard(state)
-            AudioCacheCard(
-                cacheBytes = state.audioCacheBytes,
-                maxCacheBytes = state.audioCacheLimitBytes,
-                isClearing = state.isClearingAudioCache,
-                onRefresh = viewModel::refreshAudioCacheStats,
-                onClear = viewModel::clearAudioCache
-            )
+        ScreenContentFrame(
+            paddingValues = paddingValues,
+            maxWidth = 1180.dp,
+        ) { screenWidth ->
+            val mainColumn: @Composable (Modifier) -> Unit = { modifier ->
+                Column(
+                    modifier = modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    AiProviderCard(state = state, viewModel = viewModel)
+                    BackendCard(state = state, viewModel = viewModel)
+                }
+            }
+            val sideColumn: @Composable (Modifier) -> Unit = { modifier ->
+                Column(
+                    modifier = modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    EffectiveSettingsCard(state)
+                    DiagnosticsCard(state)
+                    AudioCacheCard(
+                        cacheBytes = state.audioCacheBytes,
+                        maxCacheBytes = state.audioCacheLimitBytes,
+                        isClearing = state.isClearingAudioCache,
+                        onRefresh = viewModel::refreshAudioCacheStats,
+                        onClear = viewModel::clearAudioCache
+                    )
+                }
+            }
 
-            Text("AI 摘要提供商", style = MaterialTheme.typography.titleMedium)
+            if (screenWidth == com.digestit.ui.common.AppWidthSize.Compact) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    mainColumn(Modifier.fillMaxWidth())
+                    sideColumn(Modifier.fillMaxWidth())
+                }
+            } else {
+                AdaptiveColumns(
+                    widthSize = screenWidth,
+                    modifier = Modifier.fillMaxSize(),
+                    leading = mainColumn,
+                    trailing = sideColumn,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AiProviderCard(state: SettingsState, viewModel: SettingsViewModel) {
+    EditorialCard(modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SectionHeader(
+                eyebrow = "AI Workspace",
+                title = "模型提供商与摘要策略",
+                detail = "统一管理 API Key、模型和 OpenAI 兼容端点。",
+            )
 
             val providerOptions = listOf(
                 "deepseek" to "DeepSeek",
@@ -107,10 +162,22 @@ fun SettingsScreen(
                 "gemini" -> PasswordField("Gemini API Key", "AIza...", state.geminiApiKey, viewModel::onGeminiApiKeyChange)
                 "openai_compatible" -> OpenAiCompatSection(state, viewModel)
             }
+        }
+    }
+}
 
-            HorizontalDivider()
-
-            Text("后端服务器", style = MaterialTheme.typography.titleMedium)
+@Composable
+private fun BackendCard(state: SettingsState, viewModel: SettingsViewModel) {
+    EditorialCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SectionHeader(
+                eyebrow = "Backend",
+                title = "服务连接与工作区状态",
+                detail = "面向本地调试和多环境切换设计，支持即时健康检查。",
+            )
             BackendUrlField(
                 value = state.backendUrl,
                 history = state.backendUrlHistory,
@@ -126,39 +193,51 @@ fun SettingsScreen(
                     if (state.isTestingBackend) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("测试后端连接")
+                        Text("测试连接")
                     }
                 }
                 Button(onClick = viewModel::save, modifier = Modifier.weight(1f), enabled = !state.isSaving) {
                     if (state.isSaving) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    else Text("保存")
+                    else Text("保存配置")
                 }
             }
-            if (state.savedSuccess) Text("已保存 ✓", color = MaterialTheme.colorScheme.primary)
+            if (state.savedSuccess) {
+                Text("已保存并应用新配置", color = MaterialTheme.colorScheme.primary)
+            }
             state.backendTestError?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
-            state.backendHealth?.let { health ->
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("后端诊断", style = MaterialTheme.typography.titleSmall)
-                        StatusRow("API", health.api.status, health.api.detail)
-                        StatusRow("数据库", health.db.status, health.db.detail)
-                        StatusRow("Redis", health.redis.status, health.redis.detail)
-                        StatusRow("Celery", health.celery.status, health.celery.detail)
-                        StatusRow("Whisper", health.whisper.status, "${health.whisper.mode} · ${health.whisper.model}")
-                        if (health.whisper.fallback) {
-                            Text(
-                                "已从 ${health.whisper.configuredMode} 回退到 ${health.whisper.mode}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        health.whisper.errorMessage?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticsCard(state: SettingsState) {
+    val health = state.backendHealth ?: return
+    EditorialCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionHeader(
+                eyebrow = "Diagnostics",
+                title = "后端诊断面板",
+                detail = "快速查看 API、数据库、Redis、Celery 和 Whisper 的实时状态。",
+            )
+            StatusRow("API", health.api.status, health.api.detail)
+            StatusRow("数据库", health.db.status, health.db.detail)
+            StatusRow("Redis", health.redis.status, health.redis.detail)
+            StatusRow("Celery", health.celery.status, health.celery.detail)
+            StatusRow("Whisper", health.whisper.status, "${health.whisper.mode} · ${health.whisper.model}")
+            if (health.whisper.fallback) {
+                Text(
+                    "已从 ${health.whisper.configuredMode} 回退到 ${health.whisper.mode}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            health.whisper.errorMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -173,7 +252,7 @@ private fun EffectiveSettingsCard(state: SettingsState) {
         "gemini" -> "Gemini default"
         else -> "未设置"
     }
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    EditorialCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("当前生效配置", style = MaterialTheme.typography.titleSmall)
             Text("Provider: ${state.aiProvider}")
@@ -191,7 +270,10 @@ private fun AudioCacheCard(
     onRefresh: () -> Unit,
     onClear: () -> Unit
 ) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    EditorialCard(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("音频缓存", style = MaterialTheme.typography.titleSmall)
             Text("当前占用: ${formatBytes(cacheBytes)} / ${formatBytes(maxCacheBytes)}")
@@ -226,7 +308,7 @@ private fun AudioCacheCard(
 @Composable
 private fun StatusRow(label: String, status: String, detail: String?) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-        Text(label, modifier = Modifier.weight(0.3f))
+        Text(label, modifier = Modifier.weight(0.3f), style = MaterialTheme.typography.titleSmall)
         Text(status, color = when (status) {
             "ok" -> MaterialTheme.colorScheme.primary
             "degraded" -> MaterialTheme.colorScheme.tertiary
