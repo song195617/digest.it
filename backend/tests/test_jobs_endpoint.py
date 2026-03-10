@@ -37,6 +37,27 @@ class JobsEndpointTests(unittest.TestCase):
         self.assertEqual(first.job_id, second.job_id)
         self.assertEqual(dispatch_mock.call_count, 1)
 
+    @patch("app.api.v1.endpoints.jobs.dispatch_extract_job")
+    def test_submit_url_accepts_share_text_with_title_prefix(self, dispatch_mock):
+        with self.session_factory() as db:
+            response = asyncio.run(
+                submit_url(
+                    SubmitUrlRequest(url="【一口气了解伊朗经济-哔哩哔哩】 https://b23.tv/37gE8mi"),
+                    db,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+
+        self.assertIsNotNone(response.episode_id)
+        self.assertEqual(dispatch_mock.call_count, 1)
+
+        with self.session_factory() as db:
+            episode = db.query(Episode).filter(Episode.id == response.episode_id).first()
+            self.assertEqual(episode.original_url, "https://b23.tv/37gE8mi")
+
     @patch("app.api.v1.endpoints.jobs.dispatch_extract_job", side_effect=RuntimeError("broker down"))
     def test_submit_url_marks_job_and_episode_failed_when_enqueue_fails(self, _dispatch_mock):
         with self.session_factory() as db:

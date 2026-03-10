@@ -12,7 +12,8 @@ class DetectPlatformUseCase @Inject constructor() {
     )
 
     operator fun invoke(rawUrl: String): ParsedUrl {
-        val url = rawUrl.trim()
+        val original = rawUrl.trim()
+        val url = extractSupportedUrl(original) ?: original
         return when {
             BILIBILI_WEB.containsMatchIn(url) -> {
                 val bvid = BILIBILI_WEB.find(url)?.groupValues?.get(1)
@@ -42,10 +43,21 @@ class DetectPlatformUseCase @Inject constructor() {
     }
 
     companion object {
+        private val SHARE_URL = Regex("""(?:https?|bilibili|xiaoyuzhou)://[^\s]+""")
         private val BILIBILI_WEB = Regex("""bilibili\.com/video/(BV[\w]+)""")
         private val BILIBILI_SHORT = Regex("""b23\.tv/""")
         private val BILIBILI_DEEP_LINK = Regex("""bilibili://video/(\d+)""")
         private val XIAOYUZHOU_WEB = Regex("""xiaoyuzhoufm\.com/episode/([a-f0-9]+)""")
         private val XIAOYUZHOU_DEEP_LINK = Regex("""xiaoyuzhou://episode/([a-f0-9]+)""")
+        private const val TRAILING_PUNCTUATION = ".,;:!?)]}>'\"，。；：！？）】》」』、"
+
+        fun extractSupportedUrl(rawText: String): String? {
+            val trimmed = rawText.trim()
+            if (trimmed.isBlank()) return null
+            return SHARE_URL.find(trimmed)
+                ?.value
+                ?.trimEnd { it in TRAILING_PUNCTUATION }
+                ?.takeIf { it.isNotBlank() }
+        }
     }
 }

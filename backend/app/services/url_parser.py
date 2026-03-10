@@ -10,15 +10,28 @@ class ParsedUrl:
     content_id: str | None
 
 
+SHARE_URL = re.compile(r"(?:https?|bilibili|xiaoyuzhou)://[^\s]+")
 BILIBILI_WEB = re.compile(r"bilibili\.com/video/(BV[\w]+)")
 BILIBILI_SHORT = re.compile(r"b23\.tv/")
 BILIBILI_AV = re.compile(r"bilibili\.com/video/av(\d+)")
 XIAOYUZHOU_WEB = re.compile(r"xiaoyuzhoufm\.com/episode/([a-f0-9]+)")
 XIAOYUZHOU_DEEP = re.compile(r"xiaoyuzhou://episode/([a-f0-9]+)")
+TRAILING_PUNCTUATION = ".,;:!?)]}>'\"，。；：！？）】》」』、"
+
+
+def extract_supported_url(raw_text: str) -> str | None:
+    text = raw_text.strip()
+    if not text:
+        return None
+    match = SHARE_URL.search(text)
+    if not match:
+        return None
+    return match.group(0).rstrip(TRAILING_PUNCTUATION)
 
 
 def detect_platform(url: str) -> ParsedUrl:
-    url = url.strip()
+    original = url.strip()
+    url = extract_supported_url(original) or original
 
     if m := BILIBILI_WEB.search(url):
         bvid = m.group(1)

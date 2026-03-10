@@ -25,4 +25,20 @@ class DetectPlatformUseCaseTest {
             parsed.normalizedUrl
         )
     }
+
+    @Test
+    fun `extracts bilibili short link from share text`() {
+        val parsed = useCase("【一口气了解伊朗经济-哔哩哔哩】 https://b23.tv/37gE8mi")
+
+        assertEquals(Platform.BILIBILI, parsed.platform)
+        assertEquals("https://b23.tv/37gE8mi", parsed.normalizedUrl)
+    }
+
+    @Test
+    fun `trims trailing punctuation after extracted url`() {
+        val parsed = useCase("看这个：https://b23.tv/37gE8mi】")
+
+        assertEquals(Platform.BILIBILI, parsed.platform)
+        assertEquals("https://b23.tv/37gE8mi", parsed.normalizedUrl)
+    }
 }

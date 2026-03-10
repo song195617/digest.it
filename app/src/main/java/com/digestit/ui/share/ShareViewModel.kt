@@ -49,11 +49,12 @@ class ShareViewModel @Inject constructor(
 
     fun onUrlReceived(url: String) {
         val trimmed = url.trim()
+        val extractedUrl = DetectPlatformUseCase.extractSupportedUrl(trimmed) ?: trimmed
         val parsed = detectPlatform(trimmed)
         _state.value = when {
             trimmed.isBlank() -> ShareState(url = trimmed)
             parsed.platform != Platform.UNKNOWN -> ShareState(
-                url = trimmed,
+                url = parsed.normalizedUrl,
                 platform = parsed.platform,
                 validationKind = ShareValidationKind.VALID,
                 validationTitle = "已识别链接",
@@ -63,15 +64,15 @@ class ShareViewModel @Inject constructor(
                     Platform.UNKNOWN -> ""
                 }
             )
-            looksLikeUrl(trimmed) -> ShareState(
-                url = trimmed,
+            looksLikeUrl(extractedUrl) -> ShareState(
+                url = extractedUrl,
                 platform = Platform.UNKNOWN,
                 validationKind = ShareValidationKind.UNSUPPORTED,
                 validationTitle = "暂不支持该链接",
                 validationMessage = "目前仅支持哔哩哔哩视频和小宇宙单集链接。"
             )
             else -> ShareState(
-                url = trimmed,
+                url = extractedUrl,
                 platform = Platform.UNKNOWN,
                 validationKind = ShareValidationKind.INVALID,
                 validationTitle = "无法解析分享内容",

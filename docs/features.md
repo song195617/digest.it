@@ -14,7 +14,7 @@
 | TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转；播放器已提升为全局底部播放栏 |
 | ChatScreen | ✅ 🐛 | ui/chat/ChatScreen.kt | 无清空聊天 UI 入口 |
 | SettingsScreen | ✅ | ui/settings/SettingsScreen.kt | 支持后端连接测试 + 音频缓存大小查看/清理，不显示全局播放器 |
-| ShareActivity | ✅ | — | 系统分享意图处理 |
+| ShareActivity | ✅ | ui/share/ | 系统分享意图处理；支持从分享文案中自动提取链接 |
 
 ---
 
