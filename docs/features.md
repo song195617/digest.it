@@ -1,6 +1,6 @@
 # 功能状态注册表
 
-最后更新：2026-03-10（v1.3.4 补强音频播放器生命周期与时间点播放链路）
+最后更新：2026-03-10（v1.3.5 修复 audio_url 路径错误，恢复时间点音频播放）
 
 ---
 
@@ -11,7 +11,7 @@
 | HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 刷新时偶发错误（EpisodeRepository）|
 | ProcessingScreen | ✅ 🐛 | ui/processing/ProcessingScreen.kt | 失败后无返回/重试按钮 |
 | SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 详细摘要 Tab 支持 Markdown 渲染 |
-| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转 + 底部音频播放栏；已补强播放器 ready/seek/play 状态同步 |
+| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转 + 底部音频播放栏；已修复 audio_url 路径错误与播放器 ready/seek/play 状态同步 |
 | ChatScreen | ✅ 🐛 | ui/chat/ChatScreen.kt | 无清空聊天 UI 入口 |
 | SettingsScreen | ✅ 📋 | ui/settings/SettingsScreen.kt | 缺少测试连接功能 |
 | ShareActivity | ✅ | — | 系统分享意图处理 |
@@ -57,7 +57,7 @@
 
 ### Sprint 2 — 体验优化
 
-- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.4 补强 controller/media item/ready 状态同步，修复时间点点击后不播放）
+- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.5 修复后端 `audio_url` 路径错误，并兼容旧 `/api/v1` 音频地址）
 - 📋 **[2.2] 摘要本地缓存** → Room DB 新增 summary 表（中复杂度）
 - ✅ **[2.3] 分享/导出摘要** → SummaryScreen 分享 Intent（已完成）
 - ✅ **[2.x] 摘要 Markdown 渲染** → SummaryScreen FullSummaryContent，mikepenz 渲染库

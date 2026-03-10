@@ -3,6 +3,7 @@ package com.digestit.ui.transcript
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.digestit.data.local.datastore.UserPreferencesDataStore
+import com.digestit.data.remote.normalizeAudioPath
 import com.digestit.domain.model.Transcript
 import com.digestit.domain.model.TranscriptSegment
 import com.digestit.domain.repository.IEpisodeRepository
@@ -54,10 +55,12 @@ class TranscriptViewModel @Inject constructor(
             repository.markEpisodeOpened(episodeId)
             val transcript = repository.getTranscript(episodeId)
             val episode = repository.getEpisode(episodeId)
-            val audioUrl = episode?.audioUrl?.let { path ->
+            val audioUrl = normalizeAudioPath(episode?.audioUrl)?.let { path ->
                 val base = prefs.backendUrl.first().trimEnd('/')
                 "$base$path"
             }
+            val episodeTitle = episode?.title.orEmpty()
+            val episodeAuthor = episode?.author.orEmpty()
             _state.update {
                 it.copy(
                     isLoading = false,
@@ -67,11 +70,11 @@ class TranscriptViewModel @Inject constructor(
                 )
             }
             if (audioUrl != null) {
-                loadedAudioSource = LoadedAudioSource(audioUrl, episode.title, episode.author)
+                loadedAudioSource = LoadedAudioSource(audioUrl, episodeTitle, episodeAuthor)
                 if (initialTimestampMs != null) {
-                    audioPlayerManager.playFrom(audioUrl, episode.title, episode.author, initialTimestampMs)
+                    audioPlayerManager.playFrom(audioUrl, episodeTitle, episodeAuthor, initialTimestampMs)
                 } else {
-                    audioPlayerManager.setAudioSource(audioUrl, episode.title, episode.author)
+                    audioPlayerManager.setAudioSource(audioUrl, episodeTitle, episodeAuthor)
                 }
             } else {
                 loadedAudioSource = null

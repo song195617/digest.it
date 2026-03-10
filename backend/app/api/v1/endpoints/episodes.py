@@ -63,7 +63,7 @@ class SummaryResponse(BaseModel):
 
 def _episode_to_response(ep: Episode) -> EpisodeResponse:
     audio_url = (
-        f"/api/v1/episodes/{ep.id}/audio"
+        f"/v1/episodes/{ep.id}/audio"
         if ep.audio_file_path and Path(ep.audio_file_path).exists()
         else None
     )

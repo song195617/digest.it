@@ -10,6 +10,27 @@ class EpisodesEndpointTests(unittest.TestCase):
     def setUp(self):
         self.client, self.session_factory = create_test_client()
 
+    def test_get_episode_uses_v1_audio_path(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            audio_path = Path(tmp_dir) / "episode-1.mp3"
+            audio_path.write_text("audio")
+
+            with self.session_factory() as db:
+                db.add(Episode(
+                    id="episode-1",
+                    platform=Platform.BILIBILI,
+                    original_url="https://www.bilibili.com/video/BV1xx411c7mD",
+                    title="可播放节目",
+                    processing_status=ProcessingStatus.COMPLETED,
+                    audio_file_path=str(audio_path),
+                ))
+                db.commit()
+
+            response = self.client.get("/v1/episodes/episode-1")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["audio_url"], "/v1/episodes/episode-1/audio")
+
     def test_delete_episode_cascades_related_rows_and_temp_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             episode_dir = Path(tmp_dir) / "episode-1"
@@ -74,4 +95,3 @@ class EpisodesEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

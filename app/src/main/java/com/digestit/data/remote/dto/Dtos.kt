@@ -1,5 +1,6 @@
 package com.digestit.data.remote.dto
 
+import com.digestit.data.remote.normalizeAudioPath
 import com.digestit.domain.model.BackendComponentHealth
 import com.digestit.domain.model.BackendHealth
 import com.digestit.domain.model.BackendWhisperHealth
@@ -58,7 +59,7 @@ data class EpisodeResponse(
         createdAt = Instant.parse(createdAt),
         processingStatus = ProcessingStatus.valueOf(processingStatus),
         errorMessage = errorMessage,
-        audioUrl = audioUrl
+        audioUrl = normalizeAudioPath(audioUrl)
     )
 }
 
