@@ -1,6 +1,6 @@
 # 功能状态注册表
 
-最后更新：2026-03-09（Sprint 2 音频播放 + Markdown渲染 + 时间戳修复）
+最后更新：2026-03-10（v1.3.3 修复转录界面 seekTo/play 竞态）
 
 ---
 
@@ -57,7 +57,7 @@
 
 ### Sprint 2 — 体验优化
 
-- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar
+- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.3 修复 controller 未连接时 seekTo/play 被静默丢弃的竞态）
 - 📋 **[2.2] 摘要本地缓存** → Room DB 新增 summary 表（中复杂度）
 - ✅ **[2.3] 分享/导出摘要** → SummaryScreen 分享 Intent（已完成）
 - ✅ **[2.x] 摘要 Markdown 渲染** → SummaryScreen FullSummaryContent，mikepenz 渲染库

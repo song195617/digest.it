@@ -61,7 +61,7 @@ except Exception:
 start_uvicorn() {
     info "Starting FastAPI (log: $LOG_DIR/uvicorn.log)..."
     cd "$BACKEND"
-    nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 \
+    nohup uvicorn app.main:app --host :: --port 8000 \
         > "$LOG_DIR/uvicorn.log" 2>&1 &
     echo $! > "$LOG_DIR/uvicorn.pid"
     sleep 2
