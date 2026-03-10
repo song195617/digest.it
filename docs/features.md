@@ -1,6 +1,6 @@
 # 功能状态注册表
 
-最后更新：2026-03-10（v1.3.6 补强音频 Range seek、本地缓存与全局播放器）
+最后更新：2026-03-10（转录页段落化展示与句级跟播高亮）
 
 ---
 
@@ -11,7 +11,7 @@
 | HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 刷新时偶发错误（EpisodeRepository）；删除改为左滑露出按钮 + 二次确认；B站卡片可回填标题/封面 |
 | ProcessingScreen | ✅ 🐛 | ui/processing/ProcessingScreen.kt | 失败后无返回/重试按钮 |
 | SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 详细摘要 Tab 支持 Markdown 渲染 |
-| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转；播放器已提升为全局底部播放栏 |
+| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 段落化展示转录；句级跟播高亮；播放器已提升为全局底部播放栏 |
 | ChatScreen | ✅ 🐛 | ui/chat/ChatScreen.kt | 无清空聊天 UI 入口 |
 | SettingsScreen | ✅ | ui/settings/SettingsScreen.kt | 支持后端连接测试 + 音频缓存大小查看/清理，不显示全局播放器 |
 | ShareActivity | ✅ | ui/share/ | 系统分享意图处理；支持从分享文案中自动提取链接 |
@@ -56,7 +56,7 @@
 
 ### Sprint 2 — 体验优化
 
-- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.5 修复后端 `audio_url` 路径错误，并兼容旧 `/api/v1` 音频地址；v1.3.6+ 补上跨 episode 时间点点击强制切源）
+- ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.5 修复后端 `audio_url` 路径错误，并兼容旧 `/api/v1` 音频地址；v1.3.6+ 补上跨 episode 时间点点击强制切源；转录页现按段展示并按句跟播高亮）
 - ✅ **[2.x] 音频 Range seek 优化** → `episodes.py` 支持 HTTP Range，拖动到远处不再退化为整段顺序读取
 - ✅ **[2.x] 音频本地缓存** → Media3 `SimpleCache` + SettingsScreen 缓存占用显示，最大 1GB
 - ✅ **[2.x] 全局底部播放器** → `AppNavigation.kt` 全局承载播放栏，摘要/聊天/转录外也可控播放
