@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -21,10 +23,15 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -34,24 +41,21 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
 import com.digestit.domain.model.TranscriptSegment
+import com.digestit.media.AudioPlayerState
 import com.digestit.ui.common.formatTimestamp
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,8 +66,8 @@ fun TranscriptScreen(
     onNavigateBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val playerState by viewModel.playerState.collectAsState()
     val listState = rememberLazyListState()
-    val context = LocalContext.current
 
     LaunchedEffect(episodeId, initialTimestampMs) { viewModel.load(episodeId, initialTimestampMs) }
 
@@ -74,18 +78,6 @@ fun TranscriptScreen(
             listState.animateScrollToItem(itemIndex + 1)
         }
         viewModel.onPendingScrollHandled()
-    }
-
-    val exoPlayer = remember(state.audioUrl) {
-        state.audioUrl?.let { url ->
-            ExoPlayer.Builder(context).build().apply {
-                setMediaItem(MediaItem.fromUri(url))
-                prepare()
-            }
-        }
-    }
-    DisposableEffect(exoPlayer) {
-        onDispose { exoPlayer?.release() }
     }
 
     Scaffold(
@@ -124,8 +116,15 @@ fun TranscriptScreen(
             }
         },
         bottomBar = {
-            if (exoPlayer != null) {
-                AudioPlayerBar(player = exoPlayer)
+            if (playerState.isConnected && playerState.durationMs > 0) {
+                MusicPlayerBar(
+                    playerState = playerState,
+                    onPlayPause = { if (playerState.isPlaying) viewModel.pause() else viewModel.play() },
+                    onSeekTo = viewModel::seekTo,
+                    onSkipForward = viewModel::skipForward,
+                    onSkipBackward = viewModel::skipBackward,
+                    onSpeedChange = viewModel::setPlaybackSpeed,
+                )
             }
         }
     ) { paddingValues ->
@@ -163,11 +162,7 @@ fun TranscriptScreen(
                         TranscriptSegmentItem(
                             segment = segment,
                             isHighlighted = segment.startMs == state.highlightedSegmentStartMs,
-                            onTimestampClick = {
-                                viewModel.focusTimestamp(segment.startMs)
-                                exoPlayer?.seekTo(segment.startMs)
-                                exoPlayer?.play()
-                            }
+                            onTimestampClick = { viewModel.focusTimestamp(segment.startMs) }
                         )
                     }
                 }
@@ -177,44 +172,110 @@ fun TranscriptScreen(
 }
 
 @Composable
-private fun AudioPlayerBar(player: ExoPlayer, modifier: Modifier = Modifier) {
-    var isPlaying by remember { mutableStateOf(player.isPlaying) }
-    var currentPositionMs by remember { mutableLongStateOf(player.currentPosition) }
-    val durationMs = player.duration.coerceAtLeast(1L)
+private fun MusicPlayerBar(
+    playerState: AudioPlayerState,
+    onPlayPause: () -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onSkipForward: () -> Unit,
+    onSkipBackward: () -> Unit,
+    onSpeedChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val speedSteps = listOf(1.0f, 1.5f, 2.0f, 0.75f)
 
-    LaunchedEffect(player) {
-        while (true) {
-            isPlaying = player.isPlaying
-            currentPositionMs = player.currentPosition
-            delay(500)
-        }
+    var isDragging by remember { mutableStateOf(false) }
+    var sliderValue by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(playerState.positionMs) {
+        if (!isDragging) sliderValue = playerState.positionMs.toFloat()
     }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 4.dp
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        tonalElevation = 8.dp
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { if (isPlaying) player.pause() else player.play() }) {
-                    Icon(
-                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放"
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            // Title + author
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = playerState.episodeTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (playerState.author.isNotBlank()) {
+                    Text(
+                        text = " · ${playerState.author}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            // Slider with timestamps
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${formatTimestamp(currentPositionMs)} / ${formatTimestamp(durationMs)}",
+                    formatTimestamp(playerState.positionMs),
                     style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(start = 4.dp)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Slider(
+                    value = sliderValue,
+                    onValueChange = { sliderValue = it; isDragging = true },
+                    onValueChangeFinished = { onSeekTo(sliderValue.toLong()); isDragging = false },
+                    valueRange = 0f..playerState.durationMs.toFloat().coerceAtLeast(1f),
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                )
+                Text(
+                    formatTimestamp(playerState.durationMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Slider(
-                value = currentPositionMs.toFloat(),
-                onValueChange = { player.seekTo(it.toLong()) },
-                valueRange = 0f..durationMs.toFloat(),
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Controls
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onSkipBackward) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "后退15秒")
+                }
+                FilledIconButton(
+                    onClick = onPlayPause,
+                    modifier = Modifier.size(56.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(
+                        if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (playerState.isPlaying) "暂停" else "播放",
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                IconButton(onClick = onSkipForward) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "前进15秒")
+                }
+                val currentSpeedIndex = speedSteps.indexOf(playerState.playbackSpeed).takeIf { it >= 0 } ?: 0
+                val nextSpeedIndex = (currentSpeedIndex + 1) % speedSteps.size
+                AssistChip(
+                    onClick = { onSpeedChange(speedSteps[nextSpeedIndex]) },
+                    label = {
+                        val speed = playerState.playbackSpeed
+                        val speedLabel = if (speed == speed.toLong().toFloat()) "${speed.toLong()}x" else "${speed}x"
+                        Text(text = speedLabel, style = MaterialTheme.typography.labelMedium)
+                    },
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
         }
     }
 }

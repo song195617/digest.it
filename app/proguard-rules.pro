@@ -22,3 +22,8 @@
 # Hilt
 -keep class dagger.hilt.** { *; }
 -keep @dagger.hilt.android.lifecycle.HiltViewModel class * { *; }
+
+# Media3
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
+-keep class com.digestit.media.AudioPlayerService { *; }

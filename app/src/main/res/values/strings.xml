@@ -4,4 +4,6 @@
     <string name="processing_notification_channel">Content Processing</string>
     <string name="processing_notification_title">Processing content…</string>
     <string name="notification_channel_id">digestit_processing</string>
+    <string name="notification_channel_playback_id">digestit_playback</string>
+    <string name="notification_channel_playback_name">Audio Playback</string>
 </resources>

@@ -6,6 +6,8 @@ import com.digestit.data.local.datastore.UserPreferencesDataStore
 import com.digestit.domain.model.Transcript
 import com.digestit.domain.model.TranscriptSegment
 import com.digestit.domain.repository.IEpisodeRepository
+import com.digestit.media.AudioPlayerManager
+import com.digestit.media.AudioPlayerState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +26,6 @@ data class TranscriptState(
     val currentMatchPosition: Int = 0,
     val highlightedSegmentStartMs: Long? = null,
     val pendingScrollTargetStartMs: Long? = null,
-    val audioUrl: String? = null,
     val error: String? = null
 )
 
@@ -32,10 +33,13 @@ data class TranscriptState(
 class TranscriptViewModel @Inject constructor(
     private val repository: IEpisodeRepository,
     private val prefs: UserPreferencesDataStore,
+    private val audioPlayerManager: AudioPlayerManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TranscriptState())
     val state: StateFlow<TranscriptState> = _state.asStateFlow()
+
+    val playerState: StateFlow<AudioPlayerState> = audioPlayerManager.state
 
     fun load(episodeId: String, initialTimestampMs: Long?) {
         viewModelScope.launch {
@@ -52,9 +56,11 @@ class TranscriptViewModel @Inject constructor(
                     isLoading = false,
                     transcript = transcript,
                     visibleSegments = transcript?.segments ?: emptyList(),
-                    audioUrl = audioUrl,
                     error = if (transcript == null) "转录文本未找到" else null,
                 )
+            }
+            if (audioUrl != null && episode != null) {
+                audioPlayerManager.setAudioSource(audioUrl, episode.title, episode.author)
             }
             initialTimestampMs?.let { focusTimestamp(it) }
         }
@@ -91,7 +97,16 @@ class TranscriptViewModel @Inject constructor(
                 pendingScrollTargetStartMs = target?.startMs,
             )
         }
+        audioPlayerManager.seekTo(timestampMs)
+        audioPlayerManager.play()
     }
+
+    fun play() = audioPlayerManager.play()
+    fun pause() = audioPlayerManager.pause()
+    fun seekTo(positionMs: Long) = audioPlayerManager.seekTo(positionMs)
+    fun skipForward() = audioPlayerManager.skipForward()
+    fun skipBackward() = audioPlayerManager.skipBackward()
+    fun setPlaybackSpeed(speed: Float) = audioPlayerManager.setPlaybackSpeed(speed)
 
     fun goToNextMatch() {
         val state = _state.value
