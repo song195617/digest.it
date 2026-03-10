@@ -30,6 +30,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlin.math.ln
+import kotlin.math.pow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +65,13 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             EffectiveSettingsCard(state)
+            AudioCacheCard(
+                cacheBytes = state.audioCacheBytes,
+                maxCacheBytes = state.audioCacheLimitBytes,
+                isClearing = state.isClearingAudioCache,
+                onRefresh = viewModel::refreshAudioCacheStats,
+                onClear = viewModel::clearAudioCache
+            )
 
             Text("AI 摘要提供商", style = MaterialTheme.typography.titleMedium)
 
@@ -170,6 +179,46 @@ private fun EffectiveSettingsCard(state: SettingsState) {
             Text("Provider: ${state.aiProvider}")
             Text("Model: ${effectiveModel.ifBlank { "未设置" }}")
             Text("Backend: ${state.backendUrl.ifBlank { "未设置" }}")
+        }
+    }
+}
+
+@Composable
+private fun AudioCacheCard(
+    cacheBytes: Long,
+    maxCacheBytes: Long,
+    isClearing: Boolean,
+    onRefresh: () -> Unit,
+    onClear: () -> Unit
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("音频缓存", style = MaterialTheme.typography.titleSmall)
+            Text("当前占用: ${formatBytes(cacheBytes)} / ${formatBytes(maxCacheBytes)}")
+            Text(
+                "已播放过的音频会自动缓存到本地，以加快再次播放和拖动进度条。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("刷新缓存")
+                }
+                Button(
+                    onClick = onClear,
+                    enabled = !isClearing && cacheBytes > 0L,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isClearing) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("清理缓存")
+                    }
+                }
+            }
         }
     }
 }
@@ -360,4 +409,16 @@ private fun PasswordField(label: String, placeholder: String, value: String, onC
         modifier = Modifier.fillMaxWidth(),
         singleLine = true
     )
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0L) return "0 B"
+    val units = listOf("B", "KB", "MB", "GB", "TB")
+    val digitGroup = (ln(bytes.toDouble()) / ln(1024.0)).toInt().coerceIn(0, units.lastIndex)
+    val value = bytes / 1024.0.pow(digitGroup.toDouble())
+    return if (digitGroup == 0) {
+        "${value.toLong()} ${units[digitGroup]}"
+    } else {
+        "%.1f %s".format(value, units[digitGroup])
+    }
 }

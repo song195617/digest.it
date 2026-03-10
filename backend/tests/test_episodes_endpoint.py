@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from fastapi.responses import FileResponse
+from starlette.requests import Request
 from app.api.v1.endpoints.episodes import delete_episode, get_episode, list_episodes, stream_audio
 from app.models.episode import ChatMessage, Episode, Platform, ProcessingJob, ProcessingStatus, Summary, Transcript
 from tests.test_support import create_test_session_factory
@@ -12,6 +13,12 @@ from tests.test_support import create_test_session_factory
 class EpisodesEndpointTests(unittest.TestCase):
     def setUp(self):
         self.session_factory = create_test_session_factory()
+
+    def make_request(self, range_header: str | None = None) -> Request:
+        headers = []
+        if range_header is not None:
+            headers.append((b"range", range_header.encode("utf-8")))
+        return Request({"type": "http", "method": "GET", "headers": headers})
 
     def test_list_episodes_uses_v1_audio_path_only_when_audio_exists(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -80,12 +87,34 @@ class EpisodesEndpointTests(unittest.TestCase):
                 ))
                 db.commit()
 
-                response = asyncio.run(stream_audio("episode-1", db))
+                response = asyncio.run(stream_audio("episode-1", self.make_request(), db))
 
             self.assertIsInstance(response, FileResponse)
             self.assertEqual(Path(response.path), audio_path)
             self.assertEqual(response.media_type, "audio/mpeg")
             self.assertEqual(response.filename, "episode-1.mp3")
+
+    def test_stream_audio_honors_range_requests(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            audio_path = Path(tmp_dir) / "episode-1.mp3"
+            audio_path.write_bytes(b"0123456789")
+
+            with self.session_factory() as db:
+                db.add(Episode(
+                    id="episode-1",
+                    platform=Platform.BILIBILI,
+                    original_url="https://www.bilibili.com/video/BV1xx411c7mD",
+                    title="可播放节目",
+                    processing_status=ProcessingStatus.COMPLETED,
+                    audio_file_path=str(audio_path),
+                ))
+                db.commit()
+
+                response = asyncio.run(stream_audio("episode-1", self.make_request("bytes=2-5"), db))
+
+            self.assertEqual(response.status_code, 206)
+            self.assertEqual(response.headers["content-range"], "bytes 2-5/10")
+            self.assertEqual(response.headers["content-length"], "4")
 
     def test_delete_episode_cascades_related_rows_and_temp_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

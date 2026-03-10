@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.digestit.data.local.datastore.UserPreferencesDataStore
 import com.digestit.domain.model.BackendHealth
 import com.digestit.domain.repository.IEpisodeRepository
+import com.digestit.media.AudioCacheManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,12 +42,16 @@ data class SettingsState(
     val isTestingBackend: Boolean = false,
     val backendHealth: BackendHealth? = null,
     val backendTestError: String? = null,
+    val audioCacheBytes: Long = 0L,
+    val audioCacheLimitBytes: Long = AudioCacheManager.MAX_CACHE_BYTES,
+    val isClearingAudioCache: Boolean = false,
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val prefs: UserPreferencesDataStore,
     private val repository: IEpisodeRepository,
+    private val audioCacheManager: AudioCacheManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -84,10 +89,12 @@ class SettingsViewModel @Inject constructor(
                             deepseekApiKey = ds.first,
                             deepseekBaseUrl = ds.second,
                             deepseekModel = ds.third,
+                            audioCacheLimitBytes = AudioCacheManager.MAX_CACHE_BYTES,
                         )
                     }
                 }.collect {}
         }
+        refreshAudioCacheStats()
     }
 
     fun onClaudeKeyChange(key: String) { _state.update { it.copy(claudeKey = key) } }
@@ -103,6 +110,28 @@ class SettingsViewModel @Inject constructor(
     fun onDeepseekBaseUrlChange(url: String) { _state.update { it.copy(deepseekBaseUrl = url) } }
     fun onDeepseekModelChange(model: String) { _state.update { it.copy(deepseekModel = model) } }
     fun onSavedSuccessConsumed() { _state.update { it.copy(savedSuccess = false) } }
+
+    fun refreshAudioCacheStats() {
+        viewModelScope.launch {
+            val bytes = withContext(Dispatchers.IO) { audioCacheManager.getCacheSizeBytes() }
+            _state.update { it.copy(audioCacheBytes = bytes, audioCacheLimitBytes = AudioCacheManager.MAX_CACHE_BYTES) }
+        }
+    }
+
+    fun clearAudioCache() {
+        viewModelScope.launch {
+            _state.update { it.copy(isClearingAudioCache = true) }
+            withContext(Dispatchers.IO) { audioCacheManager.clearCache() }
+            val bytes = withContext(Dispatchers.IO) { audioCacheManager.getCacheSizeBytes() }
+            _state.update {
+                it.copy(
+                    isClearingAudioCache = false,
+                    audioCacheBytes = bytes,
+                    audioCacheLimitBytes = AudioCacheManager.MAX_CACHE_BYTES,
+                )
+            }
+        }
+    }
 
     fun resetDeepseekBaseUrl() {
         _state.update { it.copy(deepseekBaseUrl = UserPreferencesDataStore.DEEPSEEK_DEFAULT_URL) }

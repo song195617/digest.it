@@ -3,10 +3,17 @@ package com.digestit.media
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class AudioPlayerService : MediaLibraryService() {
+
+    @Inject
+    lateinit var audioCacheManager: AudioCacheManager
 
     private lateinit var player: ExoPlayer
     private lateinit var mediaLibrarySession: MediaLibrarySession
@@ -18,6 +25,7 @@ class AudioPlayerService : MediaLibraryService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
         player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(audioCacheManager.buildDataSourceFactory(this)))
             .setAudioAttributes(audioAttributes, /* handleAudioBecomingNoisy= */ true)
             .build()
         mediaLibrarySession = MediaLibrarySession.Builder(this, player, object : MediaLibrarySession.Callback {})

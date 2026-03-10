@@ -123,6 +123,8 @@ dependencies {
     implementation(libs.markdown.renderer.m3)
 
     // Media3 (ExoPlayer)
+    implementation(libs.media3.database)
+    implementation(libs.media3.datasource)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
 

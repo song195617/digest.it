@@ -1,6 +1,6 @@
 # 功能状态注册表
 
-最后更新：2026-03-10（v1.3.5 修复 audio_url 路径错误，恢复时间点音频播放）
+最后更新：2026-03-10（v1.3.6 补强音频 Range seek、本地缓存与全局播放器）
 
 ---
 
@@ -11,9 +11,9 @@
 | HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 刷新时偶发错误（EpisodeRepository）|
 | ProcessingScreen | ✅ 🐛 | ui/processing/ProcessingScreen.kt | 失败后无返回/重试按钮 |
 | SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 详细摘要 Tab 支持 Markdown 渲染 |
-| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转 + 底部音频播放栏；已修复 audio_url 路径错误与播放器 ready/seek/play 状态同步 |
+| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 时间戳点击跳转；播放器已提升为全局底部播放栏 |
 | ChatScreen | ✅ 🐛 | ui/chat/ChatScreen.kt | 无清空聊天 UI 入口 |
-| SettingsScreen | ✅ 📋 | ui/settings/SettingsScreen.kt | 缺少测试连接功能 |
+| SettingsScreen | ✅ | ui/settings/SettingsScreen.kt | 支持后端连接测试 + 音频缓存大小查看/清理 |
 | ShareActivity | ✅ | — | 系统分享意图处理 |
 
 ---
@@ -30,7 +30,7 @@
 | POST /v1/episodes/{id}/retry | ✅ | api/v1/endpoints/episodes.py | 重新处理失败剧集 |
 | GET /v1/episodes/{id}/transcript | ✅ | api/v1/endpoints/episodes.py | 获取转录文本 |
 | GET /v1/episodes/{id}/summary | ✅ | api/v1/endpoints/episodes.py | 获取摘要；highlights 时间戳已修复（带时间戳转录） |
-| GET /v1/episodes/{id}/audio | ✅ | api/v1/endpoints/episodes.py | 流式返回音频文件；EpisodeResponse 含 audio_url |
+| GET /v1/episodes/{id}/audio | ✅ | api/v1/endpoints/episodes.py | 支持 Range 请求的音频流；EpisodeResponse 含 audio_url |
 | WS /v1/ws/chat/{session_id} | ✅ | api/v1/endpoints/chat.py | 流式 AI 聊天 |
 | GET /health | ✅ | api/v1/endpoints/health.py | 健康检查 |
 
@@ -52,12 +52,14 @@
 
 - 🐛 **[1.1] 首页刷新错误** → `EpisodeRepository.kt` + `HomeViewModel.kt`（低复杂度）
 - 🐛 **[1.2] 处理失败无返回/重试按钮** → `ProcessingScreen.kt`（低复杂度）
-- 📋 **[1.3] Settings 测试连接功能** → `SettingsScreen.kt` + 后端验证端点（中复杂度）
 - 📋 **[1.4] Celery 任务自动重试** → `tasks/*.py`，配置 max_retries + countdown（低复杂度）
 
 ### Sprint 2 — 体验优化
 
 - ✅ **[2.1] 时间戳 Chip 点击跳转 + 音频 seek** → `TranscriptScreen.kt` + ExoPlayer AudioPlayerBar（v1.3.5 修复后端 `audio_url` 路径错误，并兼容旧 `/api/v1` 音频地址）
+- ✅ **[2.x] 音频 Range seek 优化** → `episodes.py` 支持 HTTP Range，拖动到远处不再退化为整段顺序读取
+- ✅ **[2.x] 音频本地缓存** → Media3 `SimpleCache` + SettingsScreen 缓存占用显示，最大 1GB
+- ✅ **[2.x] 全局底部播放器** → `AppNavigation.kt` 全局承载播放栏，摘要/聊天/转录外也可控播放
 - 📋 **[2.2] 摘要本地缓存** → Room DB 新增 summary 表（中复杂度）
 - ✅ **[2.3] 分享/导出摘要** → SummaryScreen 分享 Intent（已完成）
 - ✅ **[2.x] 摘要 Markdown 渲染** → SummaryScreen FullSummaryContent，mikepenz 渲染库

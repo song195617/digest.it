@@ -1,10 +1,11 @@
 import json
+import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import Optional
-from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.responses import FileResponse
+from typing import Iterator, Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.api.v1.endpoints.jobs import JobStatusResponse, STATUS_PROGRESS, _job_to_response
@@ -16,6 +17,7 @@ from app.services.ai.provider_config import ProviderConfig
 from app.tasks.helpers import dispatch_extract_job
 
 router = APIRouter(prefix="/v1/episodes", tags=["episodes"])
+STREAM_CHUNK_SIZE = 1024 * 1024
 
 
 class EpisodeResponse(BaseModel):
@@ -80,6 +82,41 @@ def _episode_to_response(ep: Episode) -> EpisodeResponse:
         error_message=ep.error_message,
         audio_url=audio_url,
     )
+
+
+def _iter_file_range(path: Path, start: int, end: int) -> Iterator[bytes]:
+    with path.open("rb") as handle:
+        handle.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            chunk = handle.read(min(STREAM_CHUNK_SIZE, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int]:
+    if not range_header.startswith("bytes="):
+        raise HTTPException(status_code=416, detail="Invalid range unit")
+    start_raw, end_raw = range_header.removeprefix("bytes=").split("-", 1)
+    if not start_raw and not end_raw:
+        raise HTTPException(status_code=416, detail="Invalid range")
+
+    if start_raw:
+        start = int(start_raw)
+        end = int(end_raw) if end_raw else file_size - 1
+    else:
+        suffix_length = int(end_raw)
+        if suffix_length <= 0:
+            raise HTTPException(status_code=416, detail="Invalid range")
+        start = max(file_size - suffix_length, 0)
+        end = file_size - 1
+
+    end = min(end, file_size - 1)
+    if start < 0 or start >= file_size or end < start:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+    return start, end
 
 
 @router.get("", response_model=list[EpisodeResponse])
@@ -215,11 +252,31 @@ async def get_summary(episode_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{episode_id}/audio")
-async def stream_audio(episode_id: str, db: Session = Depends(get_db)):
+async def stream_audio(episode_id: str, request: Request, db: Session = Depends(get_db)):
     ep = db.query(Episode).filter(Episode.id == episode_id).first()
     if not ep or not ep.audio_file_path:
         raise HTTPException(status_code=404, detail="Audio not available")
     path = Path(ep.audio_file_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
-    return FileResponse(path, media_type="audio/mpeg", filename=f"{episode_id}.mp3")
+    file_size = os.path.getsize(path)
+    common_headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'attachment; filename="{episode_id}.mp3"',
+    }
+    range_header = request.headers.get("range")
+    if not range_header:
+        return FileResponse(path, media_type="audio/mpeg", filename=f"{episode_id}.mp3", headers=common_headers)
+
+    start, end = _parse_range_header(range_header, file_size)
+    headers = {
+        **common_headers,
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Content-Length": str(end - start + 1),
+    }
+    return StreamingResponse(
+        _iter_file_range(path, start, end),
+        status_code=206,
+        media_type="audio/mpeg",
+        headers=headers,
+    )
