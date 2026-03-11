@@ -22,8 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -60,16 +60,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
@@ -77,14 +78,7 @@ import com.digestit.domain.model.Episode
 import com.digestit.domain.model.ProcessingStatus
 import com.digestit.domain.model.SearchResult
 import com.digestit.domain.model.SearchSourceType
-import com.digestit.ui.common.AppWidthSize
-import com.digestit.ui.common.EditorialCard
-import com.digestit.ui.common.LabelPill
-import com.digestit.ui.common.MetricCard
-import com.digestit.ui.common.ScreenContentFrame
-import com.digestit.ui.common.SectionHeader
 import com.digestit.ui.common.formatDateTime
-import com.digestit.ui.common.formatDuration
 import com.digestit.ui.theme.platformColor
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -100,7 +94,6 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val effect by viewModel.effects.collectAsState()
-    val widthSize = com.digestit.ui.common.rememberAppWidthSize()
     val snackbarHostState = remember { SnackbarHostState() }
     val clipboardManager = LocalClipboardManager.current
     var showUrlDialog by remember { mutableStateOf(false) }
@@ -129,16 +122,49 @@ fun HomeScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                title = { Text("digest.it", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+            Column {
+                TopAppBar(
+                    title = { Text("digest.it", fontWeight = FontWeight.Bold) },
+                    actions = {
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(Icons.Default.Settings, contentDescription = "设置")
+                        }
+                    }
+                )
+                OutlinedTextField(
+                    value = state.searchQuery,
+                    onValueChange = viewModel::onSearchQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    placeholder = { Text("搜索标题、摘要或全文") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = state.selectedFilter == filter,
+                            onClick = { viewModel.onFilterChange(filter) },
+                            label = {
+                                Text(
+                                    when (filter) {
+                                        HomeFilter.ALL -> "全部"
+                                        HomeFilter.FAVORITES -> "收藏"
+                                        HomeFilter.RECENT -> "最近查看"
+                                    }
+                                )
+                            }
+                        )
                     }
                 }
-            )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showUrlDialog = true }) {
@@ -147,87 +173,47 @@ fun HomeScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
-        ScreenContentFrame(
-            paddingValues = paddingValues,
-            maxWidth = 1200.dp,
-        ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item {
-                    HomeHeroCard(
-                        state = state,
-                        widthSize = widthSize,
-                        onSearchChange = viewModel::onSearchQueryChange,
-                        onFilterChange = viewModel::onFilterChange,
-                        onShowAddDialog = { showUrlDialog = true },
+        Box(modifier = Modifier.padding(paddingValues)) {
+            when {
+                state.searchQuery.isNotBlank() -> {
+                    SearchResultsContent(
+                        results = state.searchResults,
+                        onResultClick = viewModel::onSearchResultClick,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-
-                if (state.searchQuery.isNotBlank()) {
-                    item {
-                        SectionHeader(
-                            eyebrow = "Search",
-                            title = if (state.searchResults.isEmpty()) "没有找到匹配结果" else "搜索结果",
-                            detail = "支持标题、摘要和全文检索。",
-                        )
-                    }
-                    if (state.searchResults.isEmpty()) {
-                        item { EmptyState() }
-                    } else {
-                        items(
-                            items = state.searchResults,
-                            key = { "${it.episodeId}-${it.sourceType}-${it.timestampMs}" }
-                        ) { result ->
-                            SearchResultCard(
-                                result = result,
-                                onResultClick = viewModel::onSearchResultClick,
+                state.episodes.isEmpty() -> {
+                    EmptyState(modifier = Modifier.align(Alignment.Center))
+                }
+                else -> {
+                    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        section("处理中", state.processingEpisodes) { episode ->
+                            DismissibleEpisodeCard(
+                                episode = episode,
+                                onClick = { viewModel.onEpisodeClick(episode) },
+                                onDelete = { viewModel.deleteEpisode(episode.id) },
+                                onRetry = null,
+                                onToggleFavorite = { viewModel.toggleFavorite(episode) }
                             )
                         }
-                    }
-                } else if (state.episodes.isEmpty()) {
-                    item { EmptyState() }
-                } else {
-                    section(
-                        title = "处理中",
-                        detail = "任务会在后台持续推进，可随时进入详情查看进度。",
-                        items = state.processingEpisodes,
-                    ) { episode ->
-                        DismissibleEpisodeCard(
-                            episode = episode,
-                            onClick = { viewModel.onEpisodeClick(episode) },
-                            onDelete = { viewModel.deleteEpisode(episode.id) },
-                            onRetry = null,
-                            onToggleFavorite = { viewModel.toggleFavorite(episode) }
-                        )
-                    }
-                    section(
-                        title = "最近完成",
-                        detail = "优先展示最近可继续阅读和继续发问的内容。",
-                        items = state.completedEpisodes,
-                    ) { episode ->
-                        DismissibleEpisodeCard(
-                            episode = episode,
-                            onClick = { viewModel.onEpisodeClick(episode) },
-                            onDelete = { viewModel.deleteEpisode(episode.id) },
-                            onRetry = null,
-                            onToggleFavorite = { viewModel.toggleFavorite(episode) }
-                        )
-                    }
-                    section(
-                        title = "失败任务",
-                        detail = "保留失败原因并支持一键重试。",
-                        items = state.failedEpisodes,
-                    ) { episode ->
-                        DismissibleEpisodeCard(
-                            episode = episode,
-                            onClick = { viewModel.onEpisodeClick(episode) },
-                            onDelete = { viewModel.deleteEpisode(episode.id) },
-                            onRetry = { viewModel.retryEpisode(episode.id) },
-                            onToggleFavorite = { viewModel.toggleFavorite(episode) }
-                        )
+                        section("最近完成", state.completedEpisodes) { episode ->
+                            DismissibleEpisodeCard(
+                                episode = episode,
+                                onClick = { viewModel.onEpisodeClick(episode) },
+                                onDelete = { viewModel.deleteEpisode(episode.id) },
+                                onRetry = null,
+                                onToggleFavorite = { viewModel.toggleFavorite(episode) }
+                            )
+                        }
+                        section("失败任务", state.failedEpisodes) { episode ->
+                            DismissibleEpisodeCard(
+                                episode = episode,
+                                onClick = { viewModel.onEpisodeClick(episode) },
+                                onDelete = { viewModel.deleteEpisode(episode.id) },
+                                onRetry = { viewModel.retryEpisode(episode.id) },
+                                onToggleFavorite = { viewModel.toggleFavorite(episode) }
+                            )
+                        }
                     }
                 }
             }
@@ -251,166 +237,56 @@ fun HomeScreen(
 
 private fun androidx.compose.foundation.lazy.LazyListScope.section(
     title: String,
-    detail: String,
     items: List<Episode>,
     itemContent: @Composable (Episode) -> Unit,
 ) {
     if (items.isEmpty()) return
-    item {
-        SectionHeader(
-            title = title,
-            detail = detail,
-        )
-    }
+    item { Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
     items(items, key = { it.id }) { episode -> itemContent(episode) }
 }
 
 @Composable
-private fun HomeHeroCard(
-    state: HomeState,
-    widthSize: AppWidthSize,
-    onSearchChange: (String) -> Unit,
-    onFilterChange: (HomeFilter) -> Unit,
-    onShowAddDialog: () -> Unit,
-) {
-    EditorialCard(
-        modifier = Modifier.fillMaxWidth(),
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            if (widthSize == AppWidthSize.Compact) {
-                SectionHeader(
-                    eyebrow = "Knowledge digest",
-                    title = "把播客和视频压缩成可阅读的知识工作台",
-                    detail = "导入链接后，自动生成转录、摘要和可追问的 AI 上下文。",
-                )
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    SectionHeader(
-                        eyebrow = "Knowledge digest",
-                        title = "把播客和视频压缩成可阅读的知识工作台",
-                        detail = "导入链接后，自动生成转录、摘要和可追问的 AI 上下文。",
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Button(onClick = onShowAddDialog) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("导入新内容")
-                    }
-                }
-            }
-
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = onSearchChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("搜索标题、摘要或全文片段") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                HomeFilter.entries.forEach { filter ->
-                    FilterChip(
-                        selected = state.selectedFilter == filter,
-                        onClick = { onFilterChange(filter) },
-                        label = {
-                            Text(
-                                when (filter) {
-                                    HomeFilter.ALL -> "全部"
-                                    HomeFilter.FAVORITES -> "收藏"
-                                    HomeFilter.RECENT -> "最近查看"
-                                }
-                            )
-                        }
-                    )
-                }
-            }
-
-            HomeMetrics(state = state, widthSize = widthSize)
-        }
-    }
-}
-
-@Composable
-private fun HomeMetrics(state: HomeState, widthSize: AppWidthSize) {
-    val metrics = listOf(
-        Triple(state.episodes.size.toString(), "总内容", "已归档到本地"),
-        Triple(state.processingEpisodes.size.toString(), "进行中", "后台继续处理"),
-        Triple(state.completedEpisodes.size.toString(), "已完成", "可直接继续阅读"),
-        Triple(state.episodes.count { it.isFavorite }.toString(), "收藏", "高频回看内容"),
-    )
-    if (widthSize == AppWidthSize.Compact) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            metrics.chunked(2).forEach { rowItems ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    rowItems.forEach { (value, label, supporting) ->
-                        MetricCard(
-                            value = value,
-                            label = label,
-                            supporting = supporting,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (rowItems.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            metrics.forEach { (value, label, supporting) ->
-                MetricCard(
-                    value = value,
-                    label = label,
-                    supporting = supporting,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchResultCard(
-    result: SearchResult,
+private fun SearchResultsContent(
+    results: List<SearchResult>,
     onResultClick: (SearchResult) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    EditorialCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onResultClick(result) },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    if (results.isEmpty()) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text("没有匹配结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = result.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            LabelPill(
-                text = when (result.sourceType) {
-                    SearchSourceType.TITLE -> result.subtitle
-                    SearchSourceType.SUMMARY -> "摘要 · ${result.subtitle}"
-                    SearchSourceType.TRANSCRIPT -> "全文 · ${result.subtitle}"
-                },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Text(
-                text = result.previewText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        item {
+            Text("搜索结果", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        items(results, key = { "${it.episodeId}-${it.sourceType}-${it.timestampMs}" }) { result ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onResultClick(result) },
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(result.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when (result.sourceType) {
+                            SearchSourceType.TITLE -> result.subtitle
+                            SearchSourceType.SUMMARY -> "摘要 · ${result.subtitle}"
+                            SearchSourceType.TRANSCRIPT -> "全文 · ${result.subtitle}"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(result.previewText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }
@@ -424,12 +300,14 @@ private fun DismissibleEpisodeCard(
     onRetry: (() -> Unit)?,
     onToggleFavorite: () -> Unit,
 ) {
+    val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var cardWidthPx by remember { mutableFloatStateOf(0f) }
     var offsetPx by remember { mutableFloatStateOf(0f) }
 
-    val maxRevealPx = (cardWidthPx / 3f).takeIf { it > 0f } ?: 140f
+    val fallbackRevealPx = with(density) { 112.dp.toPx() }
+    val maxRevealPx = (cardWidthPx / 3f).takeIf { it > 0f } ?: fallbackRevealPx
     val revealThresholdPx = maxRevealPx * 0.5f
     val isDeleteActionVisible = offsetPx <= -maxRevealPx * 0.8f
 
@@ -456,10 +334,7 @@ private fun DismissibleEpisodeCard(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(
-                    MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(28.dp),
-                ),
+                .background(MaterialTheme.colorScheme.errorContainer),
             contentAlignment = Alignment.CenterEnd
         ) {
             Surface(
@@ -513,7 +388,7 @@ private fun DismissibleEpisodeCard(
                 animateOffset(0f)
             },
             title = { Text("确认删除") },
-            text = { Text("删除后会移除该条内容和相关缓存，是否继续？") },
+            text = { Text("删除后将移除该条内容及其本地缓存，是否继续？") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -551,57 +426,58 @@ private fun EpisodeCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 if (episode.coverUrl != null) {
                     AsyncImage(
                         model = episode.coverUrl,
                         contentDescription = null,
-                        modifier = Modifier
-                            .size(92.dp)
-                            .clip(RoundedCornerShape(18.dp))
+                        modifier = Modifier.size(72.dp).clip(RoundedCornerShape(8.dp))
                     )
-                    Spacer(modifier = Modifier.width(14.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                 }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        LabelPill(
-                            text = episode.platform.displayName,
-                            containerColor = itemPlatformColor.copy(alpha = 0.18f),
-                            contentColor = itemPlatformColor,
-                        )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = itemPlatformColor.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                episode.platform.displayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = itemPlatformColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
                         StatusChip(episode.processingStatus)
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = episode.title,
-                        style = MaterialTheme.typography.titleLarge,
+                        episode.title,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (episode.author.isNotBlank()) {
                         Text(
-                            text = episode.author,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            episode.author,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        LabelPill(text = formatDuration(episode.durationSeconds))
-                        LabelPill(
-                            text = if (episode.lastOpenedAt != null) {
-                                "最近查看 ${formatDateTime(episode.lastOpenedAt)}"
-                            } else {
-                                "创建于 ${formatDateTime(episode.createdAt)}"
-                            }
-                        )
-                    }
+                    Text(
+                        if (episode.lastOpenedAt != null) {
+                            "最近查看 ${formatDateTime(episode.lastOpenedAt)}"
+                        } else {
+                            "创建于 ${formatDateTime(episode.createdAt)}"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 IconButton(onClick = onToggleFavorite) {
                     Icon(
@@ -614,7 +490,7 @@ private fun EpisodeCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     episode.errorMessage?.let {
                         Text(
-                            text = it,
+                            it,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.weight(1f)
@@ -636,33 +512,33 @@ private fun EpisodeCard(
 @Composable
 private fun StatusChip(status: ProcessingStatus) {
     val (text, color) = when (status) {
-        ProcessingStatus.COMPLETED -> "已完成" to Color(0xFF2F855A)
-        ProcessingStatus.FAILED -> "失败" to Color(0xFFC53030)
-        ProcessingStatus.TRANSCRIBING -> "转录中" to Color(0xFF2B6CB0)
-        ProcessingStatus.EXTRACTING -> "提取中" to Color(0xFF7B4A8B)
-        ProcessingStatus.SUMMARIZING -> "生成摘要" to Color(0xFFB7791F)
-        ProcessingStatus.QUEUED -> "等待中" to Color(0xFF6B7280)
+        ProcessingStatus.COMPLETED -> "已完成" to Color(0xFF4CAF50)
+        ProcessingStatus.FAILED -> "失败" to Color(0xFFF44336)
+        ProcessingStatus.TRANSCRIBING -> "转录中" to Color(0xFF2196F3)
+        ProcessingStatus.EXTRACTING -> "提取中" to Color(0xFF9C27B0)
+        ProcessingStatus.SUMMARIZING -> "生成摘要" to Color(0xFFFF9800)
+        ProcessingStatus.QUEUED -> "等待中" to Color.Gray
     }
-    LabelPill(
-        text = text,
-        containerColor = color.copy(alpha = 0.16f),
-        contentColor = color,
-    )
+    Surface(color = color.copy(alpha = 0.15f), shape = RoundedCornerShape(4.dp)) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
 }
 
 @Composable
 private fun EmptyState(modifier: Modifier = Modifier) {
-    EditorialCard(
-        modifier = modifier.fillMaxWidth(),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionHeader(
-                eyebrow = "Start here",
-                title = "还没有内容库",
-                detail = "点击右下角的导入按钮，粘贴小宇宙或哔哩哔哩链接，也可以直接从对应 App 分享到 digest.it。",
-            )
-        }
+    Column(modifier = modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("还没有内容", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "点击右下角 + 按钮粘贴小宇宙或哔哩哔哩链接\n也可以在对应 App 中分享链接到 digest.it",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -678,18 +554,13 @@ private fun AddUrlDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导入内容") },
+        title = { Text("添加内容") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "粘贴小宇宙单集或哔哩哔哩视频链接，系统会自动开始处理。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 OutlinedTextField(
                     value = urlInput,
                     onValueChange = onUrlChange,
-                    label = { Text("内容链接") },
+                    label = { Text("粘贴小宇宙或哔哩哔哩链接") },
                     isError = error != null,
                     supportingText = error?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
                     modifier = Modifier.fillMaxWidth(),

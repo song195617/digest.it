@@ -1,6 +1,6 @@
 # 功能状态注册表
 
-最后更新：2026-03-10（商业化 UI 重构与多宽度自适应布局）
+最后更新：2026-03-10（转录页段落化展示与句级跟播高亮）
 
 ---
 
@@ -8,13 +8,13 @@
 
 | 屏幕 | 状态 | 关键文件 | 备注 |
 |------|------|---------|------|
-| HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 已重构为知识工作台式首页；支持商业化 hero、指标卡、搜索工作台；刷新时偶发错误（EpisodeRepository）仍待修复 |
-| ProcessingScreen | ✅ | ui/processing/ProcessingScreen.kt | 已重构为任务详情页；失败态支持返回首页、后台继续和立即重试 |
-| SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 已重构为编辑型摘要工作区；支持多宽度信息分栏与操作面板 |
-| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 已重构为文档式转录阅读器；支持多宽度搜索侧栏与段落阅读布局 |
+| HomeScreen | ✅ 🐛 | ui/home/HomeScreen.kt, HomeViewModel.kt | 刷新时偶发错误（EpisodeRepository）；删除改为左滑露出按钮 + 二次确认；B站卡片可回填标题/封面 |
+| ProcessingScreen | ✅ 🐛 | ui/processing/ProcessingScreen.kt | 失败后无返回/重试按钮 |
+| SummaryScreen | ✅ | ui/summary/SummaryScreen.kt | 详细摘要 Tab 支持 Markdown 渲染 |
+| TranscriptScreen | ✅ | ui/transcript/TranscriptScreen.kt | 段落化展示转录；句级跟播高亮；播放器已提升为全局底部播放栏 |
 | ChatScreen | ✅ 🐛 | ui/chat/ChatScreen.kt | 无清空聊天 UI 入口 |
-| SettingsScreen | ✅ | ui/settings/SettingsScreen.kt | 已重构为 workspace 风格偏好中心；支持诊断面板、连接测试和缓存管理 |
-| ShareActivity | ✅ | ui/share/ | 分享导入页已品牌化重构；支持识别状态卡和更清晰的导入动作 |
+| SettingsScreen | ✅ | ui/settings/SettingsScreen.kt | 支持后端连接测试 + 音频缓存大小查看/清理，不显示全局播放器 |
+| ShareActivity | ✅ | ui/share/ | 系统分享意图处理；支持从分享文案中自动提取链接 |
 
 ---
 
@@ -64,7 +64,6 @@
 - ✅ **[2.3] 分享/导出摘要** → SummaryScreen 分享 Intent（已完成）
 - ✅ **[2.x] 摘要 Markdown 渲染** → SummaryScreen FullSummaryContent，mikepenz 渲染库
 - ✅ **[2.x] 精彩片段时间戳修复** → prompts.py + claude/openai_service 使用带时间戳转录
-- ✅ **[2.x] 商业化 UI 重构** → Theme + Home/Processing/Summary/Transcript/Chat/Settings/Share/AudioPlayer 多宽度布局与视觉体系重构
 - 📋 **[2.4] 离线状态横幅** → 全局网络状态监听（中复杂度）
 - 📋 **[2.5] 下拉刷新** → HomeScreen SwipeRefresh（低复杂度）
 - 🐛 **[2.6] 清空聊天 UI 入口** → `ChatScreen.kt`（低复杂度）
